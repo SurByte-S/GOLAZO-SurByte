@@ -23,10 +23,9 @@ import { cn } from '../lib/utils';
 
 interface BookingsListProps {
   user: User;
-  isDarkMode?: boolean;
 }
 
-export default function BookingsList({ user, isDarkMode }: BookingsListProps) {
+export default function BookingsList({ user }: BookingsListProps) {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());

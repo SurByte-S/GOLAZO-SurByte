@@ -9,10 +9,9 @@ import { cn } from '../lib/utils';
 
 interface RankingPageProps {
   user: User;
-  isDarkMode?: boolean;
 }
 
-export default function RankingPage({ user, isDarkMode }: RankingPageProps) {
+export default function RankingPage({ user }: RankingPageProps) {
   const [ranking, setRanking] = useState<{ id: string, name: string, points: number }[]>([]);
   const [userPoints, setUserPoints] = useState(0);
 

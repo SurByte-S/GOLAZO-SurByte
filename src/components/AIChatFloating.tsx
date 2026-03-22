@@ -72,6 +72,29 @@ export default function AIChatFloating() {
     },
   };
 
+  const cancelBooking: FunctionDeclaration = {
+    name: "cancelBooking",
+    parameters: {
+      type: Type.OBJECT,
+      description: "Cancela una reserva de cancha existente.",
+      properties: {
+        pitchId: {
+          type: Type.STRING,
+          description: "El ID de la cancha (ej: p1, p2, p3).",
+        },
+        date: {
+          type: Type.STRING,
+          description: "La fecha de la reserva en formato YYYY-MM-DD.",
+        },
+        hour: {
+          type: Type.NUMBER,
+          description: "La hora de inicio de la reserva (ej: 14, 15, 20).",
+        },
+      },
+      required: ["pitchId", "date", "hour"],
+    },
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim()) return;
@@ -86,6 +109,7 @@ export default function AIChatFloating() {
       
       const pitches = dataService.getPitches();
       const products = dataService.getProducts();
+      const bookings = dataService.getBookings();
 
       const systemInstruction = `
         Eres un asistente experto para dueños de complejos de fútbol 5 llamados "El Golazo".
@@ -94,15 +118,18 @@ export default function AIChatFloating() {
         1. Responder dudas sobre el negocio y estadísticas.
         2. Cambiar precios de canchas usando la herramienta 'updatePitchPrice'.
         3. Cambiar precios de bebidas usando la herramienta 'updateProductPrice'.
+        4. Cancelar reservas de canchas usando la herramienta 'cancelBooking'.
         
         Limitaciones IMPORTANTES:
         - NO puedes cambiar nada de la interfaz (UI), diseño o código de la página. Explica que eso solo lo pueden hacer los programadores.
-        - Solo puedes cambiar precios de canchas y productos.
+        - Solo puedes cambiar precios de canchas, productos y cancelar reservas.
         
         Contexto actual:
         - Canchas disponibles: ${JSON.stringify(pitches)}
         - Productos disponibles: ${JSON.stringify(products)}
+        - Reservas actuales (solo confirmadas): ${JSON.stringify(bookings.filter(b => b.status === 'confirmed'))}
         
+        Para cancelar una reserva, necesitas el pitchId, la fecha (YYYY-MM-DD) y la hora.
         Responde de forma profesional, concisa y amable en español.
       `;
 
@@ -111,7 +138,7 @@ export default function AIChatFloating() {
         contents: userMsg,
         config: { 
           systemInstruction,
-          tools: [{ functionDeclarations: [updatePitchPrice, updateProductPrice] }]
+          tools: [{ functionDeclarations: [updatePitchPrice, updateProductPrice, cancelBooking] }]
         }
       });
 
@@ -126,6 +153,22 @@ export default function AIChatFloating() {
             const { productId, newPrice } = call.args as { productId: string, newPrice: number };
             await api.updateProduct(productId, { price: newPrice });
             setChatMessages(prev => [...prev, { role: 'bot', text: `He actualizado el precio del producto ${productId} a $${newPrice} correctamente.` }]);
+          } else if (call.name === "cancelBooking") {
+            const { pitchId, date, hour } = call.args as { pitchId: string, date: string, hour: number };
+            const bookings = dataService.getBookings();
+            const bookingToCancel = bookings.find(b => 
+              b.pitchId === pitchId && 
+              b.status === 'confirmed' &&
+              b.startTime.toISOString().startsWith(date) &&
+              b.startTime.getHours() === hour
+            );
+
+            if (bookingToCancel) {
+              await api.cancelBooking(bookingToCancel.id);
+              setChatMessages(prev => [...prev, { role: 'bot', text: `He cancelado la reserva de la cancha ${pitchId} para el día ${date} a las ${hour}:00 hs.` }]);
+            } else {
+              setChatMessages(prev => [...prev, { role: 'bot', text: `No encontré ninguna reserva confirmada para la cancha ${pitchId} el día ${date} a las ${hour}:00 hs.` }]);
+            }
           }
         }
       } else {
@@ -163,7 +206,7 @@ export default function AIChatFloating() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-28 right-4 md:right-8 w-[calc(100vw-2rem)] md:w-[400px] h-[calc(100vh-12rem)] md:h-[600px] max-h-[700px] bg-white rounded-[32px] shadow-2xl z-50 overflow-hidden border border-zinc-100 flex flex-col"
+            className="fixed bottom-28 right-4 md:right-8 w-[calc(100vw-2rem)] md:w-[400px] h-[calc(100vh-12rem)] md:h-[600px] max-h-[700px] bg-zinc-900 rounded-[32px] shadow-2xl z-50 overflow-hidden border border-zinc-800 flex flex-col"
           >
             {/* Header */}
             <div className="p-6 bg-zinc-900 text-white flex items-center justify-between">
@@ -195,29 +238,29 @@ export default function AIChatFloating() {
                     "max-w-[85%] p-4 rounded-2xl text-sm font-medium leading-relaxed shadow-sm",
                     msg.role === 'user' 
                       ? "bg-green-500 text-white ml-auto rounded-tr-none" 
-                      : "bg-zinc-100 text-zinc-700 mr-auto rounded-tl-none"
+                      : "bg-zinc-800 text-zinc-100 mr-auto rounded-tl-none"
                   )}
                 >
                   {msg.text}
                 </motion.div>
               ))}
               {isTyping && (
-                <div className="bg-zinc-100 text-zinc-400 p-4 rounded-2xl rounded-tl-none mr-auto flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <span className="w-1.5 h-1.5 bg-zinc-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                <div className="bg-zinc-800 text-zinc-500 p-4 rounded-2xl rounded-tl-none mr-auto flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" />
+                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]" />
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
 
             {/* Input */}
-            <div className="p-6 border-t border-zinc-100 bg-zinc-50/50">
+            <div className="p-6 border-t border-zinc-800 bg-zinc-900/50">
               <form onSubmit={handleSendMessage} className="relative">
                 <input 
                   type="text"
                   placeholder="Escribe tu mensaje..."
-                  className="w-full bg-white border border-zinc-200 rounded-2xl py-4 pl-6 pr-14 text-sm font-medium focus:ring-2 focus:ring-green-500 outline-none transition-all shadow-sm"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl py-4 pl-6 pr-14 text-sm font-medium focus:ring-2 focus:ring-green-500 outline-none transition-all shadow-sm text-white"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                 />
@@ -233,15 +276,21 @@ export default function AIChatFloating() {
               <div className="mt-4 flex flex-wrap gap-2">
                 <button 
                   onClick={() => setChatInput("Cambia el precio de la Cancha 1 a $1800")}
-                  className="text-[10px] font-black text-zinc-400 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
+                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full hover:bg-zinc-800 transition-all"
                 >
                   Cambiar Precios
                 </button>
                 <button 
                   onClick={() => setChatInput("¿Cómo van las ventas?")}
-                  className="text-[10px] font-black text-zinc-400 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
+                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full hover:bg-zinc-800 transition-all"
                 >
                   Estadísticas
+                </button>
+                <button 
+                  onClick={() => setChatInput("Cancela el turno de la Cancha 1 para hoy a las 20hs")}
+                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full hover:bg-zinc-800 transition-all"
+                >
+                  Cancelar Turnos
                 </button>
               </div>
             </div>

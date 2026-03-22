@@ -35,11 +35,7 @@ import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { cn } from '../lib/utils';
 
-interface StatsPageProps {
-  isDarkMode?: boolean;
-}
-
-export default function StatsPage({ isDarkMode }: StatsPageProps) {
+export default function StatsPage() {
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'year'>('month');
   const [bookings, setBookings] = useState(dataService.getBookings());
   const [sales, setSales] = useState(dataService.getSales());
@@ -144,26 +140,26 @@ export default function StatsPage({ isDarkMode }: StatsPageProps) {
           <CardContent className="p-8 h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDarkMode ? "#27272a" : "#f4f4f5"} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fill: isDarkMode ? '#71717a' : '#a1a1aa', fontSize: 12, fontWeight: 700 }}
+                  tick={{ fill: '#71717a', fontSize: 12, fontWeight: 700 }}
                   dy={10}
                 />
                 <YAxis 
                   axisLine={false} 
                   tickLine={false} 
-                  tick={{ fill: isDarkMode ? '#71717a' : '#a1a1aa', fontSize: 12, fontWeight: 700 }}
+                  tick={{ fill: '#71717a', fontSize: 12, fontWeight: 700 }}
                 />
                 <Tooltip 
                   contentStyle={{ 
                     borderRadius: '16px', 
                     border: 'none', 
                     boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                    backgroundColor: isDarkMode ? '#18181b' : '#ffffff',
-                    color: isDarkMode ? '#f4f4f5' : '#18181b'
+                    backgroundColor: '#18181b',
+                    color: '#f4f4f5'
                   }}
                   itemStyle={{ fontWeight: 800 }}
                 />
@@ -172,7 +168,7 @@ export default function StatsPage({ isDarkMode }: StatsPageProps) {
                   dataKey="ingresos" 
                   stroke="#22c55e" 
                   strokeWidth={4} 
-                  dot={{ r: 4, fill: '#22c55e', strokeWidth: 2, stroke: isDarkMode ? '#18181b' : '#fff' }}
+                  dot={{ r: 4, fill: '#22c55e', strokeWidth: 2, stroke: '#18181b' }}
                   activeDot={{ r: 8, strokeWidth: 0 }}
                 />
               </LineChart>
@@ -194,16 +190,16 @@ export default function StatsPage({ isDarkMode }: StatsPageProps) {
                     dataKey="name" 
                     axisLine={false} 
                     tickLine={false} 
-                    tick={{ fill: isDarkMode ? '#71717a' : '#a1a1aa', fontSize: 12, fontWeight: 700 }}
+                    tick={{ fill: '#71717a', fontSize: 12, fontWeight: 700 }}
                   />
                   <Tooltip 
-                    cursor={{ fill: isDarkMode ? '#27272a' : '#f8fafc' }}
+                    cursor={{ fill: '#27272a' }}
                     contentStyle={{ 
                       borderRadius: '16px', 
                       border: 'none', 
                       boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                      backgroundColor: isDarkMode ? '#18181b' : '#ffffff',
-                      color: isDarkMode ? '#f4f4f5' : '#18181b'
+                      backgroundColor: '#18181b',
+                      color: '#f4f4f5'
                     }}
                   />
                   <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} />

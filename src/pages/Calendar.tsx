@@ -20,16 +20,15 @@ import { Button } from '../components/Button';
 import { Card, CardContent } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
-import { dataService } from '../services/dataService';
+import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType } from '../types';
 import { cn } from '../lib/utils';
 
 interface CalendarProps {
   user: UserType;
-  isDarkMode?: boolean;
 }
 
-export default function CalendarPage({ user, isDarkMode }: CalendarProps) {
+export default function CalendarPage({ user }: CalendarProps) {
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -129,7 +128,7 @@ export default function CalendarPage({ user, isDarkMode }: CalendarProps) {
                     setIsCalendarOpen(false);
                   }}
                   locale={es}
-                  className={cn("rdp-custom", isDarkMode ? "dark" : "")}
+                  className="rdp-custom dark"
                 />
               </div>
             )}
@@ -290,11 +289,9 @@ export default function CalendarPage({ user, isDarkMode }: CalendarProps) {
                   variant="outline" 
                   className="flex-1 py-4 border-red-100 dark:border-red-900/30 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                   onClick={async () => {
-                    if (window.confirm('¿Cancelar esta reserva?')) {
-                      await dataService.saveBookings(bookings.filter(b => b.id !== selectedBooking.id));
-                      setBookings(dataService.getBookings());
-                      setSelectedBooking(null);
-                    }
+                    await api.cancelBooking(selectedBooking.id);
+                    setBookings(dataService.getBookings());
+                    setSelectedBooking(null);
                   }}
                 >
                   Cancelar Reserva

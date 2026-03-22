@@ -32,10 +32,9 @@ import { cn } from '../lib/utils';
 
 interface DashboardProps {
   user: UserType;
-  isDarkMode?: boolean;
 }
 
-export default function Dashboard({ user, isDarkMode }: DashboardProps) {
+export default function Dashboard({ user }: DashboardProps) {
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -46,6 +45,8 @@ export default function Dashboard({ user, isDarkMode }: DashboardProps) {
   const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
   const [isCompact, setIsCompact] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [isBookingDetailModalOpen, setIsBookingDetailModalOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     clientName: user.role === 'client' ? user.name : '',
@@ -194,10 +195,7 @@ export default function Dashboard({ user, isDarkMode }: DashboardProps) {
                     setIsCalendarOpen(false);
                   }}
                   locale={es}
-                  className={cn(
-                    "rdp-custom",
-                    isDarkMode ? "dark" : ""
-                  )}
+                  className="rdp-custom dark"
                 />
               </div>
             )}
@@ -285,25 +283,34 @@ export default function Dashboard({ user, isDarkMode }: DashboardProps) {
                           )}>
                             {hours.slice(0, isCompact ? 4 : 8).map(hour => {
                               const timeStr = `${hour.toString().padStart(2, '0')}:00`;
-                              const isBooked = bookings.some(b => 
+                              const booking = bookings.find(b => 
                                 b.pitchId === pitch.id && 
                                 b.startTime.getHours() === hour &&
                                 isSameDay(b.startTime, selectedDate) &&
                                 b.status === 'confirmed'
                               );
+                              const isBooked = !!booking;
                               return (
                                 <button
                                   key={hour}
-                                  disabled={isBooked}
                                   onClick={() => {
-                                    setSelectedPitch(pitch);
-                                    setSelectedTime(timeStr);
-                                    setIsBookingModalOpen(true);
+                                    if (isBooked) {
+                                      if (user.role === 'admin') {
+                                        setSelectedBooking(booking);
+                                        setIsBookingDetailModalOpen(true);
+                                      }
+                                    } else {
+                                      setSelectedPitch(pitch);
+                                      setSelectedTime(timeStr);
+                                      setIsBookingModalOpen(true);
+                                    }
                                   }}
                                   className={cn(
                                     "py-2 text-xs font-black rounded-xl transition-all border-2",
                                     isBooked 
-                                      ? "bg-zinc-50 dark:bg-zinc-800 border-zinc-100 dark:border-zinc-700 text-zinc-300 dark:text-zinc-600 cursor-not-allowed" 
+                                      ? (user.role === 'admin' 
+                                          ? "bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30 text-red-600 dark:text-red-500 hover:bg-red-500 hover:text-white" 
+                                          : "bg-zinc-50 dark:bg-zinc-800 border-zinc-100 dark:border-zinc-700 text-zinc-300 dark:text-zinc-600 cursor-not-allowed")
                                       : "bg-white dark:bg-zinc-900 border-green-100 dark:border-green-900/30 text-green-600 dark:text-green-500 hover:bg-green-500 hover:text-white hover:border-green-500 hover:shadow-lg hover:shadow-green-500/20"
                                   )}
                                 >
@@ -347,26 +354,35 @@ export default function Dashboard({ user, isDarkMode }: DashboardProps) {
                         <div key={hour} className="grid grid-cols-8 border-b dark:border-zinc-800 last:border-0">
                           <div className="p-4 border-r dark:border-zinc-800 font-bold text-zinc-500 dark:text-zinc-400 text-sm">{timeStr}</div>
                           {weekDays.map(day => {
-                            const isBooked = bookings.some(b => 
+                            const booking = bookings.find(b => 
                               b.pitchId === pitch.id && 
                               b.startTime.getHours() === hour &&
                               isSameDay(b.startTime, day) &&
                               b.status === 'confirmed'
                             );
+                            const isBooked = !!booking;
                             return (
                               <div key={day.toISOString()} className="p-2 border-r dark:border-zinc-800 flex items-center justify-center">
                                 <button
-                                  disabled={isBooked}
                                   onClick={() => {
-                                    setSelectedDate(day);
-                                    setSelectedPitch(pitch);
-                                    setSelectedTime(timeStr);
-                                    setIsBookingModalOpen(true);
+                                    if (isBooked) {
+                                      if (user.role === 'admin') {
+                                        setSelectedBooking(booking);
+                                        setIsBookingDetailModalOpen(true);
+                                      }
+                                    } else {
+                                      setSelectedDate(day);
+                                      setSelectedPitch(pitch);
+                                      setSelectedTime(timeStr);
+                                      setIsBookingModalOpen(true);
+                                    }
                                   }}
                                   className={cn(
                                     "w-full h-10 rounded-lg transition-all text-[10px] font-black uppercase",
                                     isBooked 
-                                      ? "bg-red-50 dark:bg-red-900/10 text-red-500 cursor-not-allowed" 
+                                      ? (user.role === 'admin'
+                                          ? "bg-red-50 dark:bg-red-900/10 text-red-500 hover:bg-red-500 hover:text-white"
+                                          : "bg-red-50 dark:bg-red-900/10 text-red-500 cursor-not-allowed")
                                       : "bg-green-50 dark:bg-green-900/10 text-green-600 hover:bg-green-500 hover:text-white"
                                   )}
                                 >
@@ -444,6 +460,75 @@ export default function Dashboard({ user, isDarkMode }: DashboardProps) {
             CONFIRMAR RESERVA
           </Button>
         </form>
+      </Modal>
+      {/* Booking Detail Modal */}
+      <Modal
+        isOpen={isBookingDetailModalOpen}
+        onClose={() => setIsBookingDetailModalOpen(false)}
+        title="Detalles de la Reserva"
+      >
+        {selectedBooking && (
+          <div className="space-y-6">
+            <div className="bg-zinc-50 dark:bg-zinc-800/50 p-6 rounded-3xl space-y-4 border border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white dark:bg-zinc-900 rounded-2xl flex items-center justify-center shadow-sm">
+                  <User className="w-6 h-6 text-green-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Cliente</p>
+                  <p className="text-xl font-black text-zinc-900 dark:text-zinc-100">{selectedBooking.clientName}</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white dark:bg-zinc-900 rounded-2xl flex items-center justify-center shadow-sm">
+                  <Phone className="w-6 h-6 text-green-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Teléfono</p>
+                  <p className="text-xl font-black text-zinc-900 dark:text-zinc-100">{selectedBooking.clientPhone}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white dark:bg-zinc-900 rounded-2xl flex items-center justify-center shadow-sm">
+                  <Clock className="w-6 h-6 text-green-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Horario</p>
+                  <p className="text-xl font-black text-zinc-900 dark:text-zinc-100">
+                    {format(selectedBooking.startTime, 'HH:mm')} hs - {format(selectedBooking.startTime, 'dd/MM/yyyy')}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button 
+                variant="outline" 
+                className="flex-1 py-4 rounded-2xl"
+                onClick={() => setIsBookingDetailModalOpen(false)}
+              >
+                CERRAR
+              </Button>
+              <Button 
+                variant="danger" 
+                className="flex-1 py-4 rounded-2xl font-black"
+                onClick={async () => {
+                  try {
+                    await api.cancelBooking(selectedBooking.id);
+                    setBookings(dataService.getBookings());
+                    setIsBookingDetailModalOpen(false);
+                  } catch (error) {
+                    alert('Error al cancelar la reserva');
+                  }
+                }}
+              >
+                CANCELAR TURNO
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   );
