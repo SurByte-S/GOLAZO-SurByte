@@ -19,11 +19,11 @@ export function Button({
   ...props 
 }: ButtonProps) {
   const variants = {
-    primary: 'bg-green-500 text-white hover:bg-green-600 shadow-sm dark:bg-green-600 dark:hover:bg-green-700',
-    secondary: 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700',
-    outline: 'border border-zinc-200 bg-transparent hover:bg-zinc-50 text-zinc-700 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800',
-    ghost: 'bg-transparent hover:bg-zinc-100 text-zinc-600 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100',
-    danger: 'bg-red-500 text-white hover:bg-red-600 shadow-sm dark:bg-red-600 dark:hover:bg-red-700',
+    primary: 'bg-argentina text-zinc-900 hover:opacity-90 shadow-sm font-black',
+    secondary: 'bg-zinc-100 text-zinc-900 hover:bg-zinc-200',
+    outline: 'border border-zinc-200 bg-transparent hover:bg-zinc-50 text-zinc-700',
+    ghost: 'bg-transparent hover:bg-zinc-100 text-zinc-600',
+    danger: 'bg-red-500 text-white hover:bg-red-600 shadow-sm',
   };
 
   const sizes = {

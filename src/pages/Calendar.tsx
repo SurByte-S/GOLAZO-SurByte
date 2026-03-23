@@ -14,13 +14,16 @@ import {
   Trophy,
   Maximize2,
   Minimize2,
-  DollarSign
+  DollarSign,
+  FileText,
+  Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from '../components/Button';
 import { Card, CardContent } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
+import { ConfirmModal } from '../components/ConfirmModal';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType } from '../types';
 import { cn } from '../lib/utils';
@@ -38,6 +41,7 @@ export default function CalendarPage({ user }: CalendarProps) {
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isCompact, setIsCompact] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [isConfirmCancelOpen, setIsConfirmCancelOpen] = useState(false);
 
   useEffect(() => {
     setPitches(dataService.getPitches());
@@ -61,17 +65,17 @@ export default function CalendarPage({ user }: CalendarProps) {
     <div className="space-y-8 pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-zinc-900 dark:text-zinc-100 tracking-tighter">Calendario</h1>
-          <p className="text-zinc-500 dark:text-zinc-400 font-medium">Vista detallada de ocupación</p>
+          <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">Calendario</h1>
+          <p className="text-zinc-500 font-medium">Vista detallada de ocupación</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex bg-white dark:bg-zinc-900 p-1 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm">
+          <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
             <button
               onClick={() => setView('day')}
               className={cn(
                 "px-4 py-2 rounded-xl text-sm font-bold transition-all",
-                view === 'day' ? "bg-green-500 text-white shadow-lg shadow-green-500/20" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                view === 'day' ? "bg-argentina text-zinc-900 shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-zinc-900"
               )}
             >
               Día
@@ -80,19 +84,19 @@ export default function CalendarPage({ user }: CalendarProps) {
               onClick={() => setView('week')}
               className={cn(
                 "px-4 py-2 rounded-xl text-sm font-bold transition-all",
-                view === 'week' ? "bg-green-500 text-white shadow-lg shadow-green-500/20" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                view === 'week' ? "bg-argentina text-zinc-900 shadow-lg shadow-sky-500/20" : "text-zinc-400 hover:text-zinc-900"
               )}
             >
               Semana
             </button>
           </div>
 
-          <div className="flex bg-white dark:bg-zinc-900 p-1 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm">
+          <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
             <button
               onClick={() => setIsCompact(!isCompact)}
               className={cn(
                 "p-2 rounded-xl transition-all",
-                isCompact ? "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900" : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                isCompact ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-zinc-900"
               )}
               title={isCompact ? "Vista Normal" : "Vista Compacta"}
             >
@@ -101,13 +105,13 @@ export default function CalendarPage({ user }: CalendarProps) {
           </div>
 
           <div className="relative">
-            <div className="flex items-center gap-2 bg-white dark:bg-zinc-900 p-1.5 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm">
+            <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-zinc-100 shadow-sm">
               <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? -1 : -7))}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <button 
                 onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                className="px-4 font-bold text-zinc-700 dark:text-zinc-300 min-w-[140px] text-center hover:bg-zinc-50 dark:hover:bg-zinc-800 py-1 rounded-xl transition-colors"
+                className="px-4 font-bold text-zinc-700 min-w-[140px] text-center hover:bg-zinc-50 py-1 rounded-xl transition-colors"
               >
                 {view === 'day' 
                   ? format(selectedDate, "d 'de' MMMM", { locale: es })
@@ -120,7 +124,7 @@ export default function CalendarPage({ user }: CalendarProps) {
             </div>
 
             {isCalendarOpen && (
-              <div className="absolute top-full right-0 mt-2 z-50 bg-white dark:bg-zinc-900 border border-zinc-100 dark:border-zinc-800 rounded-3xl shadow-2xl p-4">
+              <div className="absolute top-full right-0 mt-2 z-50 bg-white border border-zinc-100 rounded-3xl shadow-2xl p-4">
                 <DayPicker
                   mode="single"
                   selected={selectedDate}
@@ -129,14 +133,14 @@ export default function CalendarPage({ user }: CalendarProps) {
                     setIsCalendarOpen(false);
                   }}
                   locale={es}
-                  className="rdp-custom dark"
+                  className="rdp-custom"
                 />
               </div>
             )}
           </div>
 
           <select
-            className="bg-white dark:bg-zinc-900 px-4 py-2.5 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm font-bold text-sm outline-none focus:ring-2 focus:ring-green-500 dark:text-zinc-100"
+            className="bg-white px-4 py-2.5 rounded-2xl border border-zinc-100 shadow-sm font-bold text-sm outline-none focus:ring-2 focus:ring-sky-500"
             value={filterPitch}
             onChange={e => setFilterPitch(e.target.value)}
           >
@@ -146,20 +150,20 @@ export default function CalendarPage({ user }: CalendarProps) {
         </div>
       </header>
 
-      <Card className="border-none shadow-xl overflow-hidden rounded-3xl bg-white dark:bg-zinc-900">
+      <Card className="border-none shadow-xl overflow-hidden rounded-3xl bg-white">
         <div className="overflow-x-auto">
           <div className="min-w-[800px]">
             {/* Header Row */}
-            <div className="grid grid-cols-[100px_repeat(auto-fit,minmax(150px,1fr))] border-b border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-800/30">
-              <div className="p-4 border-r border-zinc-100 dark:border-zinc-800" />
+            <div className="grid grid-cols-[100px_repeat(auto-fit,minmax(150px,1fr))] border-b border-zinc-100 bg-zinc-50/50">
+              <div className="p-4 border-r border-zinc-100" />
               {days.map(day => (
-                <div key={day.toString()} className="p-4 text-center border-r border-zinc-100 dark:border-zinc-800 last:border-r-0">
-                  <p className="text-[10px] uppercase tracking-widest font-black text-zinc-400 dark:text-zinc-500 mb-1">
+                <div key={day.toString()} className="p-4 text-center border-r border-zinc-100 last:border-r-0">
+                  <p className="text-[10px] uppercase tracking-widest font-black text-zinc-400 mb-1">
                     {format(day, 'EEEE', { locale: es })}
                   </p>
                   <p className={cn(
                     "text-xl font-black",
-                    isSameDay(day, new Date()) ? "text-green-600" : "text-zinc-900 dark:text-zinc-100"
+                    isSameDay(day, new Date()) ? "text-sky-600" : "text-zinc-900"
                   )}>
                     {format(day, 'd')}
                   </p>
@@ -170,16 +174,16 @@ export default function CalendarPage({ user }: CalendarProps) {
             {/* Time Rows */}
             {hours.map(hour => (
               <div key={hour} className={cn(
-                "grid grid-cols-[100px_repeat(auto-fit,minmax(150px,1fr))] border-b border-zinc-100 dark:border-zinc-800 last:border-b-0 group",
+                "grid grid-cols-[100px_repeat(auto-fit,minmax(150px,1fr))] border-b border-zinc-100 last:border-b-0 group",
                 isCompact ? "min-h-[60px]" : "min-h-[100px]"
               )}>
-                <div className="p-4 border-r border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-zinc-800/10 flex items-center justify-center">
-                  <span className="text-sm font-black text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-900 dark:group-hover:text-zinc-100 transition-colors">
+                <div className="p-4 border-r border-zinc-100 bg-zinc-50/30 flex items-center justify-center">
+                  <span className="text-sm font-black text-zinc-400 group-hover:text-zinc-900 transition-colors">
                     {hour.toString().padStart(2, '0')}:00
                   </span>
                 </div>
                 {days.map(day => (
-                  <div key={day.toString()} className="p-2 border-r border-zinc-100 dark:border-zinc-800 last:border-r-0 relative bg-white dark:bg-zinc-900">
+                  <div key={day.toString()} className="p-2 border-r border-zinc-100 last:border-r-0 relative bg-white">
                     <div className="space-y-1">
                       {filteredPitches.map(pitch => {
                         const booking = bookings.find(b => 
@@ -207,9 +211,9 @@ export default function CalendarPage({ user }: CalendarProps) {
                             className={cn(
                               "w-full p-2 rounded-xl text-left transition-all relative overflow-hidden group/item",
                               canSeeDetails ? "hover:shadow-lg hover:scale-[1.02] cursor-pointer" : "cursor-default",
-                              pitch.id === 'p1' ? "bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-100 dark:border-green-800" :
-                              pitch.id === 'p2' ? "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-blue-800" :
-                              "bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-100 dark:border-purple-800"
+                              pitch.id === 'p1' ? "bg-sky-50 text-sky-700 border border-sky-100" :
+                              pitch.id === 'p2' ? "bg-blue-50 text-blue-700 border border-blue-100" :
+                              "bg-purple-50 text-purple-700 border border-purple-100"
                             )}
                           >
                             <div className="flex items-center justify-between mb-1">
@@ -241,53 +245,53 @@ export default function CalendarPage({ user }: CalendarProps) {
       >
         {selectedBooking && (
           <div className="space-y-6">
-            <div className="flex items-center gap-4 p-6 bg-green-50 dark:bg-green-900/20 rounded-3xl border border-green-100 dark:border-green-800">
-              <div className="w-16 h-16 bg-white dark:bg-zinc-900 rounded-2xl flex items-center justify-center shadow-sm">
-                <Trophy className="w-8 h-8 text-green-500" />
+            <div className="flex items-center gap-4 p-6 bg-sky-50 rounded-3xl border border-sky-100">
+              <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                <Trophy className="w-8 h-8 text-sky-500" />
               </div>
               <div>
-                <h3 className="text-2xl font-black text-zinc-900 dark:text-zinc-100">{selectedBooking.clientName}</h3>
+                <h3 className="text-2xl font-black text-zinc-900">{selectedBooking.clientName}</h3>
                 <Badge variant="success">Reserva Confirmada</Badge>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl space-y-1">
+              <div className="p-4 bg-zinc-50 rounded-2xl space-y-1">
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">
                   <Clock className="w-3 h-3" /> Horario
                 </p>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">
+                <p className="font-bold text-zinc-900">
                   {format(selectedBooking.startTime, 'HH:mm')} - {format(selectedBooking.endTime, 'HH:mm')} hs
                 </p>
               </div>
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl space-y-1">
+              <div className="p-4 bg-zinc-50 rounded-2xl space-y-1">
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">
                   <CalendarIcon className="w-3 h-3" /> Fecha
                 </p>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">
+                <p className="font-bold text-zinc-900">
                   {format(selectedBooking.startTime, "d 'de' MMMM", { locale: es })}
                 </p>
               </div>
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl space-y-1">
+              <div className="p-4 bg-zinc-50 rounded-2xl space-y-1">
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">
                   <Phone className="w-3 h-3" /> Teléfono
                 </p>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">{selectedBooking.clientPhone}</p>
+                <p className="font-bold text-zinc-900">{selectedBooking.clientPhone}</p>
               </div>
-              <div className="p-4 bg-zinc-50 dark:bg-zinc-800/50 rounded-2xl space-y-1">
+              <div className="p-4 bg-zinc-50 rounded-2xl space-y-1">
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest flex items-center gap-1">
                   <MapPin className="w-3 h-3" /> Cancha
                 </p>
-                <p className="font-bold text-zinc-900 dark:text-zinc-100">
+                <p className="font-bold text-zinc-900">
                   {pitches.find(p => p.id === selectedBooking.pitchId)?.name}
                 </p>
               </div>
               {selectedBooking.depositAmount && (
-                <div className="p-4 bg-green-500/5 dark:bg-green-500/10 rounded-2xl space-y-1 border border-green-500/20">
-                  <p className="text-[10px] font-black text-green-600 dark:text-green-500 uppercase tracking-widest flex items-center gap-1">
+                <div className="p-4 bg-sky-500/5 rounded-2xl space-y-1 border border-sky-500/20">
+                  <p className="text-[10px] font-black text-sky-600 uppercase tracking-widest flex items-center gap-1">
                     <DollarSign className="w-3 h-3" /> Seña
                   </p>
-                  <p className="font-black text-green-600 dark:text-green-500 text-lg">
+                  <p className="font-black text-sky-600 text-lg">
                     ${selectedBooking.depositAmount}
                   </p>
                 </div>
@@ -297,24 +301,52 @@ export default function CalendarPage({ user }: CalendarProps) {
             {selectedBooking.receiptUrl && (
               <div className="space-y-2">
                 <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Comprobante de Pago</p>
-                <div className="relative group aspect-video rounded-3xl overflow-hidden border border-zinc-200 dark:border-zinc-800">
-                  <img 
-                    src={selectedBooking.receiptUrl} 
-                    alt="Comprobante" 
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                    <Button 
-                      variant="secondary" 
-                      size="sm" 
-                      className="rounded-xl"
-                      onClick={() => window.open(selectedBooking.receiptUrl, '_blank')}
-                    >
-                      <Maximize2 className="w-4 h-4 mr-2" />
-                      Ver Pantalla Completa
-                    </Button>
-                  </div>
+                <div className="relative group aspect-video rounded-3xl overflow-hidden border border-zinc-200 bg-zinc-100 flex items-center justify-center">
+                  {selectedBooking.receiptUrl.startsWith('data:application/pdf') ? (
+                    <div className="flex flex-col items-center gap-3 p-6 text-center">
+                      <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center text-red-500">
+                        <FileText className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <p className="font-bold text-zinc-900">Archivo PDF</p>
+                        <p className="text-xs text-zinc-500">Haz clic para descargar o ver</p>
+                      </div>
+                      <Button 
+                        variant="secondary" 
+                        size="sm" 
+                        className="rounded-xl mt-2"
+                        onClick={() => {
+                          const link = document.createElement('a');
+                          link.href = selectedBooking.receiptUrl!;
+                          link.download = `comprobante-${selectedBooking.clientName}.pdf`;
+                          link.click();
+                        }}
+                      >
+                        <Download className="w-4 h-4 mr-2" />
+                        Descargar PDF
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <img 
+                        src={selectedBooking.receiptUrl} 
+                        alt="Comprobante" 
+                        className="w-full h-full object-cover"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Button 
+                          variant="secondary" 
+                          size="sm" 
+                          className="rounded-xl"
+                          onClick={() => window.open(selectedBooking.receiptUrl, '_blank')}
+                        >
+                          <Maximize2 className="w-4 h-4 mr-2" />
+                          Ver Pantalla Completa
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -323,12 +355,8 @@ export default function CalendarPage({ user }: CalendarProps) {
               <div className="pt-4 flex gap-3">
                 <Button 
                   variant="outline" 
-                  className="flex-1 py-4 border-red-100 dark:border-red-900/30 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
-                  onClick={async () => {
-                    await api.cancelBooking(selectedBooking.id);
-                    setBookings(dataService.getBookings());
-                    setSelectedBooking(null);
-                  }}
+                  className="flex-1 py-4 border-red-100 text-red-500 hover:bg-red-50"
+                  onClick={() => setIsConfirmCancelOpen(true)}
                 >
                   Cancelar Reserva
                 </Button>
@@ -338,6 +366,22 @@ export default function CalendarPage({ user }: CalendarProps) {
           </div>
         )}
       </Modal>
+
+      <ConfirmModal
+        isOpen={isConfirmCancelOpen}
+        onClose={() => setIsConfirmCancelOpen(false)}
+        onConfirm={async () => {
+          if (selectedBooking) {
+            await api.cancelBooking(selectedBooking.id);
+            setBookings(dataService.getBookings());
+            setSelectedBooking(null);
+          }
+        }}
+        title="Cancelar Reserva"
+        message="¿Estás seguro de que deseas cancelar esta reserva? El turno quedará disponible nuevamente."
+        confirmText="CANCELAR TURNO"
+        cancelText="VOLVER"
+      />
     </div>
   );
 }

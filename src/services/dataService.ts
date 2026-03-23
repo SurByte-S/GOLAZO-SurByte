@@ -179,6 +179,13 @@ export const api = {
     return newSale;
   },
 
+  deleteSale: async (id: string) => {
+    const sales = dataService.getSales();
+    const sale = sales.find(s => s.id === id);
+    dataService.saveSales(sales.filter(s => s.id !== id));
+    dataService.logAction('Venta Eliminada', `Se eliminó la venta de ${sale?.productId || id}`);
+  },
+
   // Products CRUD
   addProduct: async (product: Omit<Product, 'id'>) => {
     const products = dataService.getProducts();

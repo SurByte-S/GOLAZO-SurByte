@@ -1,2 +1,27 @@
 @import "tailwindcss";
 @import "react-day-picker/dist/style.css";
+
+@theme {
+  --background-argentina: linear-gradient(to bottom, #38bdf8 0%, #38bdf8 33%, #ffffff 33%, #ffffff 66%, #38bdf8 66%, #38bdf8 100%);
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+#root {
+  min-height: 100%;
+}
+
+.bg-argentina {
+  background: var(--background-argentina);
+}
+
+.text-argentina {
+  background: var(--background-argentina);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

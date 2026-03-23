@@ -94,17 +94,17 @@ export default function StatsPage() {
 
   const frequentDaysData = getFrequentDays();
 
-  const COLORS = ['#22c55e', '#3b82f6', '#a855f7', '#f59e0b'];
+  const COLORS = ['#0ea5e9', '#3b82f6', '#a855f7', '#f59e0b'];
 
   return (
     <div className="space-y-8 pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-zinc-900 dark:text-zinc-100 tracking-tighter">Estadísticas Avanzadas</h1>
-          <p className="text-zinc-500 dark:text-zinc-400 font-medium">Análisis detallado de tu complejo deportivo</p>
+          <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">Estadísticas Avanzadas</h1>
+          <p className="text-zinc-500 font-medium">Análisis detallado de tu complejo deportivo</p>
         </div>
 
-        <div className="flex bg-white dark:bg-zinc-900 p-1 rounded-2xl border border-zinc-100 dark:border-zinc-800 shadow-sm">
+        <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
           {(['week', 'month', 'year'] as const).map((range) => (
             <button
               key={range}
@@ -112,8 +112,8 @@ export default function StatsPage() {
               className={cn(
                 "px-6 py-2.5 rounded-xl text-sm font-black transition-all uppercase tracking-widest",
                 timeRange === range 
-                  ? "bg-green-500 text-white shadow-lg shadow-green-500/20" 
-                  : "text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                  ? "bg-argentina text-zinc-900 shadow-lg shadow-sky-500/20" 
+                  : "text-zinc-400 hover:text-zinc-900"
               )}
             >
               {range === 'week' ? 'Semana' : range === 'month' ? 'Mes' : 'Año'}
@@ -124,14 +124,14 @@ export default function StatsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Revenue Chart */}
-        <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white dark:bg-zinc-900">
+        <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
           <CardHeader className="p-8 pb-0">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-black text-zinc-900 dark:text-zinc-100">Ingresos Totales</h3>
-                <p className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">Canchas + Bar</p>
+                <h3 className="text-xl font-black text-zinc-900">Ingresos Totales</h3>
+                <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Canchas + Bar</p>
               </div>
-              <div className="flex items-center gap-2 text-green-600 bg-green-50 dark:bg-green-900/20 px-3 py-1 rounded-full">
+              <div className="flex items-center gap-2 text-sky-600 bg-sky-50 px-3 py-1 rounded-full">
                 <TrendingUp className="w-4 h-4" />
                 <span className="text-xs font-black">+12.5%</span>
               </div>
@@ -140,7 +140,7 @@ export default function StatsPage() {
           <CardContent className="p-8 h-[350px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                 <XAxis 
                   dataKey="name" 
                   axisLine={false} 
@@ -156,10 +156,10 @@ export default function StatsPage() {
                 <Tooltip 
                   contentStyle={{ 
                     borderRadius: '16px', 
-                    border: 'none', 
+                    border: '1px solid #e5e7eb', 
                     boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                    backgroundColor: '#18181b',
-                    color: '#f4f4f5'
+                    backgroundColor: '#ffffff',
+                    color: '#18181b'
                   }}
                   itemStyle={{ fontWeight: 800 }}
                 />
@@ -168,7 +168,7 @@ export default function StatsPage() {
                   dataKey="ingresos" 
                   stroke="#22c55e" 
                   strokeWidth={4} 
-                  dot={{ r: 4, fill: '#22c55e', strokeWidth: 2, stroke: '#18181b' }}
+                  dot={{ r: 4, fill: '#22c55e', strokeWidth: 2, stroke: '#ffffff' }}
                   activeDot={{ r: 8, strokeWidth: 0 }}
                 />
               </LineChart>
@@ -178,10 +178,10 @@ export default function StatsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Frequency Chart */}
-          <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white dark:bg-zinc-900">
+          <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
             <CardHeader className="p-8 pb-0">
-              <h3 className="text-xl font-black text-zinc-900 dark:text-zinc-100">Días más Frecuentados</h3>
-              <p className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">Ocupación por día</p>
+              <h3 className="text-xl font-black text-zinc-900">Días más Frecuentados</h3>
+              <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Ocupación por día</p>
             </CardHeader>
             <CardContent className="p-8 h-[300px]">
               <ResponsiveContainer width="100%" height="100%">
@@ -193,13 +193,13 @@ export default function StatsPage() {
                     tick={{ fill: '#71717a', fontSize: 12, fontWeight: 700 }}
                   />
                   <Tooltip 
-                    cursor={{ fill: '#27272a' }}
+                    cursor={{ fill: '#f4f4f5' }}
                     contentStyle={{ 
                       borderRadius: '16px', 
-                      border: 'none', 
+                      border: '1px solid #e5e7eb', 
                       boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                      backgroundColor: '#18181b',
-                      color: '#f4f4f5'
+                      backgroundColor: '#ffffff',
+                      color: '#18181b'
                     }}
                   />
                   <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} />
@@ -209,12 +209,12 @@ export default function StatsPage() {
           </Card>
 
           {/* Sales Distribution */}
-          <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white dark:bg-zinc-900">
+          <Card className="border-none shadow-sm rounded-[32px] overflow-hidden bg-white">
             <CardHeader className="p-8 pb-0">
-              <h3 className="text-xl font-black text-zinc-900 dark:text-zinc-100">Distribución de Ventas</h3>
-              <p className="text-sm font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">Canchas vs Bar</p>
+              <h3 className="text-xl font-black text-zinc-900">Distribución de Ventas</h3>
+              <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Canchas vs Bar</p>
             </CardHeader>
-            <CardContent className="p-8 h-[300px] flex items-center justify-center">
+            <CardContent className="p-8 h-[300px] flex items-center justify-center relative">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
@@ -237,7 +237,7 @@ export default function StatsPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute flex flex-col items-center">
-                <span className="text-2xl font-black text-zinc-900 dark:text-zinc-100">100%</span>
+                <span className="text-2xl font-black text-zinc-900">100%</span>
                 <span className="text-[10px] font-black text-zinc-400 uppercase">Total</span>
               </div>
             </CardContent>

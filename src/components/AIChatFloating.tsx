@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Bot, 
+  User, 
   X, 
   Send, 
   MessageSquare,
   ChevronDown,
   Settings,
   DollarSign,
-  Info
+  Info,
+  Coffee,
+  Star
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { dataService, api } from '../services/dataService';
 import { cn } from '../lib/utils';
+
+import ArgentinaCountdown from './ArgentinaCountdown';
 
 interface Message {
   role: 'user' | 'bot';
@@ -23,7 +27,7 @@ export default function AIChatFloating() {
   const [isOpen, setIsOpen] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<Message[]>([
-    { role: 'bot', text: '¡Hola! Soy tu asistente IA. Puedo ayudarte con estadísticas, responder dudas o incluso cambiar los precios de las canchas y bebidas si me lo pides.' }
+    { role: 'bot', text: '¡Buenas, fanatico! Soy LIO. Estoy acá para darte una mano con las estadísticas, sacarte cualquier duda o hasta cambiar los precios de las canchas y las bebidas si me lo pedís. ¿En qué te puedo ayudar hoy?' }
   ]);
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -112,7 +116,13 @@ export default function AIChatFloating() {
       const bookings = dataService.getBookings();
 
       const systemInstruction = `
-        Eres un asistente experto para dueños de complejos de fútbol 5 llamados "El Golazo".
+        Eres "LIO", un asistente experto y muy argentino para dueños de complejos de fútbol 5.
+        
+        Tu personalidad:
+        - Hablas como un gaucho moderno, amable y servicial, pero con la humildad y el carisma de un grande.
+        - Usas expresiones argentinas como "fanatico", "che", "viste", "un lujo", "meta nomás".
+        - Eres muy profesional pero con ese toque campero y futbolero.
+        - Tu estado actual es "En la cancha...", listo para jugar.
         
         Tus capacidades:
         1. Responder dudas sobre el negocio y estadísticas.
@@ -134,7 +144,7 @@ export default function AIChatFloating() {
         - Reservas actuales (solo confirmadas): ${JSON.stringify(bookings.filter(b => b.status === 'confirmed'))}
         
         Para cancelar una reserva, necesitas el pitchId, la fecha (YYYY-MM-DD) y la hora.
-        Responde de forma profesional, concisa y amable en español.
+        Responde siempre manteniendo tu personaje de Gaucho Argento.
       `;
 
       const response = await ai.models.generateContent({
@@ -189,18 +199,75 @@ export default function AIChatFloating() {
 
   return (
     <>
-      {/* Floating Button (The "Little Ball") */}
+      {/* Argentina Countdown Floating */}
+      {!isOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="fixed bottom-32 right-8 z-40"
+        >
+          <ArgentinaCountdown variant="floating" />
+        </motion.div>
+      )}
+
+      {/* Floating Button (The "Gauchito Mascot") */}
       <motion.button
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "fixed bottom-8 right-8 w-16 h-16 rounded-full flex items-center justify-center shadow-2xl z-50 transition-colors",
-          isOpen ? "bg-zinc-900 text-white" : "bg-green-500 text-white"
+          "fixed bottom-8 right-8 w-20 h-20 rounded-full flex items-center justify-center z-50 transition-all group",
+          isOpen 
+            ? "bg-white text-zinc-900 shadow-2xl border border-zinc-200" 
+            : "bg-transparent"
         )}
       >
-        {isOpen ? <X className="w-8 h-8" /> : <Bot className="w-8 h-8" />}
-        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+        {isOpen ? (
+          <X className="w-8 h-8" />
+        ) : (
+          <div className="relative w-full h-full flex items-center justify-center">
+            {/* The "Pelota Gauchita" Mascot */}
+            <div className="relative w-16 h-16 bg-sky-400 rounded-full border-4 border-zinc-900 shadow-xl flex items-center justify-center overflow-visible">
+              {/* Soccer Ball Pattern (Emoji Style ⚽) */}
+              <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
+                {/* Central Pentagon */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-zinc-900" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
+                
+                {/* Lines connecting pentagons */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-0" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[72deg]" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[144deg]" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[216deg]" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-0.5 bg-zinc-900/40 rotate-[288deg]" />
+
+                {/* Surrounding partial pentagons */}
+                <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-5 h-5 bg-zinc-900" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
+                <div className="absolute top-2 -left-2 w-5 h-5 bg-zinc-900 rotate-[-45deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
+                <div className="absolute top-2 -right-2 w-5 h-5 bg-zinc-900 rotate-[45deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
+                <div className="absolute -bottom-2 left-2 w-5 h-5 bg-zinc-900 rotate-[180deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
+                <div className="absolute -bottom-2 right-2 w-5 h-5 bg-zinc-900 rotate-[180deg]" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />
+              </div>
+
+              {/* Eyes */}
+              <div className="relative z-20 flex gap-3 mt-1">
+                <div className="w-3 h-3 bg-zinc-900 rounded-full flex items-center justify-center">
+                  <div className="w-1 h-1 bg-white rounded-full -mt-1 -ml-1" />
+                </div>
+                <div className="w-3 h-3 bg-zinc-900 rounded-full flex items-center justify-center">
+                  <div className="w-1 h-1 bg-white rounded-full -mt-1 -ml-1" />
+                </div>
+              </div>
+
+              {/* Smile */}
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-6 h-3 border-b-2 border-zinc-900 rounded-full" />
+            </div>
+            
+            {/* Notification Badge */}
+            <div className="absolute top-2 right-2 w-5 h-5 bg-yellow-500 rounded-full border-2 border-white flex items-center justify-center shadow-lg z-50">
+              <span className="text-[8px] font-black text-zinc-900">!</span>
+            </div>
+          </div>
+        )}
       </motion.button>
 
       {/* Chat Window */}
@@ -210,22 +277,22 @@ export default function AIChatFloating() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-28 right-4 md:right-8 w-[calc(100vw-2rem)] md:w-[400px] h-[calc(100vh-12rem)] md:h-[600px] max-h-[700px] bg-zinc-900 rounded-[32px] shadow-2xl z-50 overflow-hidden border border-zinc-800 flex flex-col"
+            className="fixed bottom-28 right-4 md:right-8 w-[calc(100vw-2rem)] md:w-[400px] h-[calc(100vh-12rem)] md:h-[600px] max-h-[700px] bg-white rounded-[32px] shadow-2xl z-50 overflow-hidden border border-zinc-200 flex flex-col"
           >
             {/* Header */}
-            <div className="p-6 bg-zinc-900 text-white flex items-center justify-between">
+            <div className="p-6 bg-gradient-to-r from-sky-500 via-white to-sky-500 text-zinc-900 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
-                  <Bot className="w-6 h-6 text-white" />
+                <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center shadow-lg">
+                  <User className="w-6 h-6 text-sky-400" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm tracking-tight">Asistente IA</h3>
-                  <p className="text-[10px] font-bold text-green-400 uppercase tracking-widest">En línea</p>
+                  <h3 className="font-black text-sm tracking-tight">LIO</h3>
+                  <p className="text-[10px] font-bold text-sky-700 uppercase tracking-widest">En la cancha...</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="p-2 hover:bg-zinc-800 rounded-xl transition-colors"
+                className="p-2 hover:bg-sky-100 rounded-xl transition-colors text-sky-900"
               >
                 <ChevronDown className="w-5 h-5" />
               </button>
@@ -241,15 +308,15 @@ export default function AIChatFloating() {
                   className={cn(
                     "max-w-[85%] p-4 rounded-2xl text-sm font-medium leading-relaxed shadow-sm",
                     msg.role === 'user' 
-                      ? "bg-green-500 text-white ml-auto rounded-tr-none" 
-                      : "bg-zinc-800 text-zinc-100 mr-auto rounded-tl-none"
+                      ? "bg-sky-500 text-white ml-auto rounded-tr-none" 
+                      : "bg-zinc-100 text-zinc-900 mr-auto rounded-tl-none border-l-4 border-sky-400"
                   )}
                 >
                   {msg.text}
                 </motion.div>
               ))}
               {isTyping && (
-                <div className="bg-zinc-800 text-zinc-500 p-4 rounded-2xl rounded-tl-none mr-auto flex gap-1">
+                <div className="bg-zinc-100 text-zinc-500 p-4 rounded-2xl rounded-tl-none mr-auto flex gap-1">
                   <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" />
                   <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]" />
                   <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]" />
@@ -259,19 +326,19 @@ export default function AIChatFloating() {
             </div>
 
             {/* Input */}
-            <div className="p-6 border-t border-zinc-800 bg-zinc-900/50">
+            <div className="p-6 border-t border-zinc-200 bg-zinc-50/50">
               <form onSubmit={handleSendMessage} className="relative">
                 <input 
                   type="text"
                   placeholder="Escribe tu mensaje..."
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-2xl py-4 pl-6 pr-14 text-sm font-medium focus:ring-2 focus:ring-green-500 outline-none transition-all shadow-sm text-white"
+                  className="w-full bg-white border border-zinc-200 rounded-2xl py-4 pl-6 pr-14 text-sm font-medium focus:ring-2 focus:ring-sky-500 outline-none transition-all shadow-sm text-zinc-900"
                   value={chatInput}
                   onChange={e => setChatInput(e.target.value)}
                 />
                 <button 
                   type="submit"
                   disabled={!chatInput.trim() || isTyping}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-green-500/20 hover:bg-green-400 transition-colors disabled:opacity-50"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-500/20 hover:bg-sky-400 transition-colors disabled:opacity-50"
                 >
                   <Send className="w-4 h-4" />
                 </button>
@@ -280,19 +347,19 @@ export default function AIChatFloating() {
               <div className="mt-4 flex flex-wrap gap-2">
                 <button 
                   onClick={() => setChatInput("Cambia el precio de la Cancha 1 a $1800")}
-                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full hover:bg-zinc-800 transition-all"
+                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
                 >
                   Cambiar Precios
                 </button>
                 <button 
                   onClick={() => setChatInput("¿Cómo van las ventas?")}
-                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full hover:bg-zinc-800 transition-all"
+                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
                 >
                   Estadísticas
                 </button>
                 <button 
                   onClick={() => setChatInput("Cancela el turno de la Cancha 1 para hoy a las 20hs")}
-                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-800 px-3 py-1.5 rounded-full hover:bg-zinc-800 transition-all"
+                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
                 >
                   Cancelar Turnos
                 </button>
