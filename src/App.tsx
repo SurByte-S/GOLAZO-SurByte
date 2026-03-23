@@ -193,7 +193,7 @@ export default function App() {
             )}>
               {customLogo ? (
                 <>
-                  <img src={customLogo} alt="Logo" className="w-full h-full object-contain p-4" />
+                  <img src={customLogo} alt="Logo" className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                     <Upload className="w-6 h-6 text-white" />
                   </div>
@@ -264,7 +264,7 @@ export default function App() {
         <div className="flex items-center gap-3">
           {customLogo ? (
             <div className="flex items-center gap-3">
-              <img src={customLogo} alt="Logo" className="w-10 h-10 object-contain rounded-xl border border-zinc-100 shadow-sm" />
+              <img src={customLogo} alt="Logo" className="w-10 h-10 object-cover rounded-xl border border-zinc-100 shadow-sm" />
               <div className="flex flex-col">
                 <span className="text-xs font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">App</span>
                 <span className="text-xl font-black tracking-tighter text-zinc-900 leading-none">GOLAZO</span>
