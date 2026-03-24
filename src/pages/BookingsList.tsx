@@ -142,11 +142,12 @@ export default function BookingsList({ user }: BookingsListProps) {
           )}
           onClick={() => setSelectedBookingForDetail(booking)}
         >
+          <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
           {isInPlay && (
-            <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500 animate-pulse" />
+            <div className="absolute top-0 left-0 right-0 h-1 bg-emerald-500 animate-pulse z-20" />
           )}
           
-          <CardContent className="p-0">
+          <CardContent className="p-0 relative z-10">
             <div className="flex flex-col md:flex-row">
               {/* Time Section */}
               <div className={cn(

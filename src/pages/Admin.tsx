@@ -17,7 +17,9 @@ import {
   User as UserIcon,
   History,
   Clock,
-  Search
+  Search,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -43,6 +45,7 @@ export default function Admin() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isDeleteMode, setIsDeleteMode] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{ type: 'pitch' | 'product', id: string } | null>(null);
+  const [customLogo, setCustomLogo] = useState<string | null>(localStorage.getItem('golazo_custom_logo'));
   
   const [pitchForm, setPitchForm] = useState({
     name: '',
@@ -125,6 +128,27 @@ export default function Admin() {
     setConfirmDelete(null);
   };
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        localStorage.setItem('golazo_custom_logo', base64String);
+        setCustomLogo(base64String);
+        // Trigger a custom event or just let the user refresh/navigate
+        window.dispatchEvent(new Event('storage'));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeLogo = () => {
+    localStorage.removeItem('golazo_custom_logo');
+    setCustomLogo(null);
+    window.dispatchEvent(new Event('storage'));
+  };
+
   return (
     <div className="space-y-8 pb-20">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -155,6 +179,60 @@ export default function Admin() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Statistics Summary */}
         <div className="lg:col-span-1 space-y-6">
+          {/* Logo Management Section */}
+          <Card className="border-none shadow-sm rounded-3xl overflow-hidden bg-white">
+            <CardHeader className="flex flex-row items-center gap-3 pb-2">
+              <div className="w-10 h-10 bg-argentina rounded-xl flex items-center justify-center text-zinc-900">
+                <ImageIcon className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-black text-zinc-900">Logo del Complejo</h3>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="relative group">
+                <div className="aspect-square w-full rounded-[32px] bg-zinc-50 border-2 border-dashed border-zinc-200 flex flex-col items-center justify-center overflow-hidden transition-all group-hover:border-sky-500/50">
+                  {customLogo ? (
+                    <img src={customLogo} alt="Logo actual" className="w-full h-full object-contain p-4" />
+                  ) : (
+                    <div className="text-center p-6">
+                      <ImageIcon className="w-12 h-12 text-zinc-300 mx-auto mb-3" />
+                      <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">Sin logo personalizado</p>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-[32px]">
+                  <label className="cursor-pointer">
+                    <input type="file" className="hidden" onChange={handleLogoUpload} accept="image/*" />
+                    <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl hover:scale-110 transition-transform">
+                      <Upload className="w-5 h-5 text-sky-600" />
+                    </div>
+                  </label>
+                  {customLogo && (
+                    <button 
+                      onClick={removeLogo}
+                      className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-xl hover:scale-110 transition-transform"
+                    >
+                      <Trash2 className="w-5 h-5 text-red-500" />
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest text-center">
+                  Recomendado: Imagen cuadrada (PNG o JPG)
+                </p>
+                <Button 
+                  variant="outline" 
+                  className="w-full py-4 rounded-2xl border-zinc-200 text-xs font-black tracking-widest uppercase"
+                  onClick={() => document.querySelector<HTMLInputElement>('input[type="file"]')?.click()}
+                >
+                  {customLogo ? 'CAMBIAR LOGO' : 'SUBIR LOGO'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card className="border-none shadow-sm rounded-3xl overflow-hidden bg-white">
             <CardHeader className="flex flex-row items-center gap-3 pb-2">
               <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center text-sky-600">
@@ -424,7 +502,7 @@ export default function Admin() {
           <p className="text-sm text-zinc-500 mb-4">
             El registro de auditoría rastrea todas las acciones importantes realizadas por los administradores para mantener la seguridad y el control del complejo.
           </p>
-          <div className="max-h-[400px] overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+          <div className="space-y-3 pr-2 custom-scrollbar">
             {auditLogs.map((log) => (
               <div key={log.id} className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 space-y-2">
                 <div className="flex items-center justify-between">

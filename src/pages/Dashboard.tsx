@@ -163,7 +163,7 @@ export default function Dashboard({ user }: DashboardProps) {
         return `*${p.name}*: ${slots.join(', ')}`;
       }).join('\n');
 
-      const text = encodeURIComponent(`⚽ *Disponibilidad El Golazo - ${format(selectedDate, 'dd/MM/yyyy')}*\n\n${availableSlots}\n\n¡Reserva tu turno ahora!`);
+      const text = encodeURIComponent(`⚽ *Disponibilidad Golazo - ${format(selectedDate, 'dd/MM/yyyy')}*\n\n${availableSlots}\n\n¡Reserva tu turno ahora!`);
       window.open(`https://wa.me/?text=${text}`, '_blank');
     } catch (error) {
       console.error('Error sharing:', error);
@@ -208,111 +208,206 @@ export default function Dashboard({ user }: DashboardProps) {
     end: addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), 6)
   });
 
+  const [weather, setWeather] = useState<{ temp: number; condition: string; icon: string; locationName: string }>({
+    temp: 22,
+    condition: 'Cargando...',
+    icon: '⏳',
+    locationName: 'Tu ubicación'
+  });
+
+  useEffect(() => {
+    const fetchWeather = async (lat: number, lon: number) => {
+      try {
+        // Fetch location name
+        const locResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
+        const locData = await locResponse.json();
+        const city = locData.address.city || locData.address.town || locData.address.village || 'Tu ubicación';
+
+        const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        const data = await response.json();
+        const current = data.current_weather;
+        
+        // Map WMO Weather interpretation codes (WW)
+        const getCondition = (code: number) => {
+          if (code === 0) return { text: 'Despejado', icon: '☀️' };
+          if (code <= 3) return { text: 'Parcialmente Nublado', icon: '🌤️' };
+          if (code <= 48) return { text: 'Niebla', icon: '🌫️' };
+          if (code <= 55) return { text: 'Llovizna', icon: '🌦️' };
+          if (code <= 65) return { text: 'Lluvia', icon: '🌧️' };
+          if (code <= 75) return { text: 'Nieve', icon: '❄️' };
+          if (code <= 82) return { text: 'Chubascos', icon: '🌦️' };
+          if (code <= 99) return { text: 'Tormenta', icon: '⛈️' };
+          return { text: 'Soleado', icon: '☀️' };
+        };
+
+        const { text, icon } = getCondition(current.weathercode);
+        setWeather({
+          temp: Math.round(current.temperature),
+          condition: text,
+          icon: icon,
+          locationName: city
+        });
+      } catch (error) {
+        console.error('Error fetching weather:', error);
+        setWeather({ temp: 22, condition: 'Soleado', icon: '☀️', locationName: 'Buenos Aires' });
+      }
+    };
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          fetchWeather(position.coords.latitude, position.coords.longitude);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          // Fallback to Buenos Aires
+          fetchWeather(-34.6037, -58.3816);
+        }
+      );
+    } else {
+      // Fallback to Buenos Aires
+      fetchWeather(-34.6037, -58.3816);
+    }
+  }, []);
+
   return (
-    <div className="space-y-8 pb-20">
+    <div className="space-y-10 pb-20">
       {/* Header */}
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center justify-between w-full md:w-auto">
+      <header className="flex flex-col gap-8">
+        {/* Top Level: Weather & Date/Buttons */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
+          <div className="flex items-center gap-4">
+            <div className="bg-white px-4 py-2 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-3">
+              <span className="text-2xl">{weather.icon}</span>
+              <div className="flex flex-col">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-black text-zinc-900 leading-none">{weather.temp}°C</span>
+                  <span className="text-[10px] font-black text-sky-500 uppercase tracking-tighter bg-sky-50 px-1.5 py-0.5 rounded-md">
+                    {weather.locationName}
+                  </span>
+                </div>
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{weather.condition} | Ideal para jugar</span>
+              </div>
+            </div>
+            <div className="hidden md:block">
+              <ArgentinaCountdown />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="relative">
+              <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-zinc-100 shadow-sm">
+                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, -1))} className="h-8 w-8 p-0">
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <button 
+                  onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+                  className="px-4 font-bold text-zinc-700 flex items-center gap-2 hover:bg-zinc-50 py-1 rounded-xl transition-colors text-sm"
+                >
+                  <CalendarIcon className="w-4 h-4 text-sky-500" />
+                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                </button>
+                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, 1))} className="h-8 w-8 p-0">
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {isCalendarOpen && (
+                <div className="absolute top-full right-0 mt-2 z-50 bg-white border border-zinc-100 rounded-3xl shadow-2xl p-4">
+                  <DayPicker
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={(date) => {
+                      if (date) setSelectedDate(date);
+                      setIsCalendarOpen(false);
+                    }}
+                    locale={es}
+                    className="rdp-custom"
+                  />
+                </div>
+              )}
+            </div>
+
+            {user.role === 'admin' && (
+              <Button 
+                onClick={shareAvailability} 
+                disabled={isSharing}
+                variant="secondary"
+                className="gap-2 rounded-2xl border border-zinc-200"
+              >
+                <Share2 className="w-4 h-4" />
+                <span className="hidden sm:inline">{isSharing ? 'Generando...' : 'Compartir'}</span>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Level: Title & View Toggles */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="md:hidden">
                 <ArgentinaLogo size="sm" showText={true} />
               </div>
               <div className="hidden md:block">
-                <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">
+                <h1 className="text-5xl font-black text-zinc-900 tracking-tighter flex items-center gap-3">
                   INICIO
                 </h1>
               </div>
               <div className="md:hidden h-6 w-px bg-zinc-200 mx-1" />
               <div className="md:hidden">
-                <h1 className="text-xl font-bold text-zinc-900 tracking-tight">INICIO</h1>
+                <h1 className="text-2xl font-bold text-zinc-900 tracking-tight flex items-center gap-2">
+                  INICIO
+                </h1>
               </div>
             </div>
-            <p className="text-zinc-500 font-medium md:block hidden">Bienvenido de nuevo, {user.name}</p>
-            <p className="text-zinc-500 text-xs font-medium md:hidden">Bienvenido, {user.name}</p>
-          </div>
-          <div className="hidden md:block">
-            <ArgentinaCountdown />
-          </div>
-        </div>
-        
-        <div className="flex flex-wrap items-center gap-3">
-          {user.role === 'admin' && (
-            <Button 
-              onClick={shareAvailability} 
-              disabled={isSharing}
-              className="gap-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-200 rounded-2xl"
-            >
-              <Share2 className="w-4 h-4" />
-              {isSharing ? 'Generando...' : 'Compartir Disponibilidad'}
-            </Button>
-          )}
-          {/* View Toggles */}
-          <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
-            <button
-              onClick={() => setViewMode('day')}
-              className={cn(
-                "p-2 rounded-xl transition-all",
-                viewMode === 'day' ? "bg-argentina text-zinc-900 shadow-lg" : "text-zinc-400 hover:text-zinc-900"
-              )}
-            >
-              <LayoutGrid className="w-5 h-5" />
-            </button>
-            <button
-              onClick={() => setViewMode('week')}
-              className={cn(
-                "p-2 rounded-xl transition-all",
-                viewMode === 'week' ? "bg-argentina text-zinc-900 shadow-lg" : "text-zinc-400 hover:text-zinc-900"
-              )}
-            >
-              <List className="w-5 h-5" />
-            </button>
+            <div className="flex flex-col">
+              <p className="text-zinc-500 font-bold md:text-base text-sm">Golazo te da la bienvenida, {user.name}</p>
+              <p className="text-zinc-400 text-xs font-medium uppercase tracking-widest">Panel de control Golazo</p>
+            </div>
           </div>
 
-          <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
-            <button
-              onClick={() => setIsCompact(!isCompact)}
-              className={cn(
-                "p-2 rounded-xl transition-all",
-                isCompact ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-zinc-900"
-              )}
-              title={isCompact ? "Vista Normal" : "Vista Compacta"}
-            >
-              {isCompact ? <Maximize2 className="w-5 h-5" /> : <Minimize2 className="w-5 h-5" />}
-            </button>
-          </div>
-
-          <div className="relative">
-            <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-zinc-100 shadow-sm">
-              <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, -1))}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <button 
-                onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                className="px-4 font-bold text-zinc-700 flex items-center gap-2 hover:bg-zinc-50 py-1 rounded-xl transition-colors"
+          <div className="flex items-center gap-3">
+            {/* View Toggles */}
+            <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
+              <button
+                onClick={() => setViewMode('day')}
+                className={cn(
+                  "p-2 rounded-xl transition-all flex items-center gap-2 relative overflow-hidden",
+                  viewMode === 'day' ? "text-zinc-900 shadow-lg border border-sky-300" : "text-zinc-400 hover:text-zinc-900"
+                )}
               >
-                <CalendarIcon className="w-4 h-4 text-sky-500" />
-                {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
+                {viewMode === 'day' && (
+                  <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
+                )}
+                <LayoutGrid className="w-5 h-5 relative z-10" />
               </button>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, 1))}>
-                <ChevronRight className="w-4 h-4" />
-              </Button>
+              <button
+                onClick={() => setViewMode('week')}
+                className={cn(
+                  "p-2 rounded-xl transition-all flex items-center gap-2 relative overflow-hidden",
+                  viewMode === 'week' ? "text-zinc-900 shadow-lg border border-sky-300" : "text-zinc-400 hover:text-zinc-900"
+                )}
+              >
+                {viewMode === 'week' && (
+                  <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
+                )}
+                <List className="w-5 h-5 relative z-10" />
+              </button>
             </div>
 
-            {isCalendarOpen && (
-              <div className="absolute top-full right-0 mt-2 z-50 bg-white border border-zinc-100 rounded-3xl shadow-2xl p-4">
-                <DayPicker
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={(date) => {
-                    if (date) setSelectedDate(date);
-                    setIsCalendarOpen(false);
-                  }}
-                  locale={es}
-                  className="rdp-custom"
-                />
-              </div>
-            )}
+            <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
+              <button
+                onClick={() => setIsCompact(!isCompact)}
+                className={cn(
+                  "p-2 rounded-xl transition-all",
+                  isCompact ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-zinc-900"
+                )}
+                title={isCompact ? "Vista Normal" : "Vista Compacta"}
+              >
+                {isCompact ? <Maximize2 className="w-5 h-5" /> : <Minimize2 className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -332,16 +427,20 @@ export default function Dashboard({ user }: DashboardProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
           >
-            <Card className="border-none shadow-sm hover:shadow-md transition-all overflow-hidden group">
-              <CardContent className="p-6">
+            <Card className="border-none shadow-xl hover:shadow-2xl transition-all overflow-hidden group rounded-[32px] bg-white/90 backdrop-blur-sm ring-1 ring-zinc-100/50 hover:ring-sky-500/30 relative">
+              <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
+              <CardContent className="p-8 relative z-10">
                 <div className="flex items-center justify-between">
-                  <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110", stat.color)}>
-                    <stat.icon className="w-6 h-6" />
+                  <div className={cn(
+                    "w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110", 
+                    stat.color
+                  )}>
+                    <stat.icon className="w-7 h-7" />
                   </div>
-              <div className="text-right">
-                <p className="text-xs font-black text-zinc-400 uppercase tracking-widest mb-1">{stat.label}</p>
-                <p className="text-2xl font-black text-zinc-900">{stat.value}</p>
-              </div>
+                  <div className="text-right">
+                    <p className="font-black uppercase tracking-widest mb-1 text-zinc-400 text-xs">{stat.label}</p>
+                    <p className="font-black text-zinc-900 text-3xl">{stat.value}</p>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -350,22 +449,25 @@ export default function Dashboard({ user }: DashboardProps) {
       </section>
 
       {/* Pitches Grid */}
-      <div className="space-y-4" ref={gridRef}>
-        <h2 className="text-2xl font-black text-zinc-900 tracking-tight">
+      <div className="space-y-8" ref={gridRef}>
+        <h2 className="text-3xl font-black text-zinc-900 tracking-tight">
           {viewMode === 'day' ? 'Disponibilidad de Canchas' : 'Vista Semanal'}
         </h2>
         
         {viewMode === 'day' ? (
           <section className={cn(
-            "grid gap-6",
+            "grid gap-8",
             isCompact ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
           )}>
             {pitches.map((pitch) => {
               const status = getPitchStatus(pitch.id);
+              const pitchBookings = bookings.filter(b => b.pitchId === pitch.id && isSameDay(b.startTime, selectedDate) && b.status === 'confirmed');
+              const availableTurns = hours.length - pitchBookings.length;
+
               return (
                 <motion.div key={pitch.id} layout>
               <Card 
-                className="h-full border-none shadow-sm hover:shadow-xl transition-all group bg-white cursor-pointer"
+                className="h-full border-none shadow-md hover:shadow-2xl transition-all group bg-white cursor-pointer ring-1 ring-zinc-100"
                 onClick={() => {
                   setSelectedPitch(pitch);
                   setIsPitchScheduleModalOpen(true);
@@ -377,29 +479,43 @@ export default function Dashboard({ user }: DashboardProps) {
                       "font-black text-zinc-900 group-hover:text-sky-600 transition-colors",
                       isCompact ? "text-lg" : "text-xl"
                     )}>{pitch.name}</h3>
-                    <Badge variant={status === 'available' ? 'success' : 'danger'} className="mt-1">
+                    <Badge 
+                      variant={status === 'available' ? 'success' : 'danger'} 
+                      className="mt-1 px-3 py-1"
+                    >
                       {status === 'available' ? 'Disponible' : 'En Juego'}
                     </Badge>
                   </div>
                   <div className="text-right">
                     <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{pitch.type}</span>
-                    <p className={cn("font-black text-sky-600", isCompact ? "text-base" : "text-lg")}>${pitch.price}</p>
+                    <p className={cn("font-black text-sky-600", isCompact ? "text-xl" : "text-2xl")}>${pitch.price}</p>
                   </div>
                 </CardHeader>
                     <CardContent className={isCompact ? "p-4" : "p-6"}>
                       <div className="space-y-4">
+                        <div className="flex items-center gap-2 text-zinc-500">
+                          <Clock className="w-4 h-4" />
+                          <span className="text-xs font-bold">{availableTurns} turnos disponibles hoy</span>
+                        </div>
                         {!isCompact && (
-                          <div className="h-1 w-full bg-zinc-100 rounded-full overflow-hidden">
+                          <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
                             <div 
                               className={cn("h-full transition-all duration-1000", status === 'available' ? 'w-0' : 'w-full bg-red-500')} 
                             />
                           </div>
                         )}
-                        <div className="pt-4">
-                          <Button className="w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl shadow-sky-500/20 group-hover:scale-[1.02] transition-transform">
-                            Ver Horarios Disponibles
-                          </Button>
-                        </div>
+                          <div className="pt-2">
+                            <Button 
+                              className="w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl shadow-sky-500/20 hover:bg-argentina hover:text-zinc-900 group-hover:scale-[1.02] transition-all"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPitch(pitch);
+                                setIsPitchScheduleModalOpen(true);
+                              }}
+                            >
+                              Ver Horarios
+                            </Button>
+                          </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -410,7 +526,7 @@ export default function Dashboard({ user }: DashboardProps) {
         ) : (
           <section className="space-y-6">
             {pitches.map((pitch) => (
-              <Card key={pitch.id} className="border-none shadow-sm overflow-hidden bg-white">
+              <Card key={pitch.id} className="border-none shadow-sm bg-white">
                 <CardHeader className="bg-zinc-50">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xl font-black text-zinc-900">{pitch.name}</h3>

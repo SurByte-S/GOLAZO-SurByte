@@ -9,9 +9,9 @@ interface BadgeProps {
 
 export function Badge({ variant = 'neutral', children, className }: BadgeProps) {
   const variants = {
-    success: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    success: 'bg-emerald-500 text-white border-emerald-600 shadow-sm',
     warning: 'bg-amber-100 text-amber-700 border-amber-200',
-    danger: 'bg-red-100 text-red-700 border-red-200',
+    danger: 'bg-red-500 text-white border-red-600 shadow-sm',
     neutral: 'bg-zinc-100 text-zinc-700 border-zinc-200',
   };
 

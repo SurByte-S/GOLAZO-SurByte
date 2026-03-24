@@ -86,7 +86,7 @@ export default function ArgentinaCountdown({ className, variant = 'card' }: Arge
           className="flex items-center gap-2 px-4 py-2 rounded-full bg-sky-500 shadow-xl shadow-sky-500/30 hover:bg-sky-400 transition-all hover:scale-105 active:scale-95"
         >
           <Trophy className="w-3 h-3 text-white" />
-          <span className="text-[10px] font-black text-white uppercase tracking-widest">ARG JUEGA</span>
+          <span className="text-[10px] font-black text-white uppercase tracking-widest">ARGENTINA JUEGA</span>
         </button>
 
         {/* Floating Fixture Popover */}
