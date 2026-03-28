@@ -26,7 +26,9 @@ import {
   Image as ImageIcon,
   CheckCircle2,
   FileText,
-  Download
+  Download,
+  Timer,
+  Zap
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { domToPng } from 'modern-screenshot';
@@ -42,18 +44,20 @@ import { cn } from '../lib/utils';
 
 interface DashboardProps {
   user: UserType;
+  onNavigate?: (page: string) => void;
+  onLogout?: () => void;
 }
 
-export default function Dashboard({ user }: DashboardProps) {
+export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps) {
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [bookingTimer, setBookingTimer] = useState<number | null>(null);
   const [selectedPitch, setSelectedPitch] = useState<Pitch | null>(null);
   const [selectedTime, setSelectedTime] = useState<string>('');
   const [viewMode, setViewMode] = useState<'day' | 'week'>('day');
-  const [isCompact, setIsCompact] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
   const [isBookingDetailModalOpen, setIsBookingDetailModalOpen] = useState(false);
@@ -68,11 +72,42 @@ export default function Dashboard({ user }: DashboardProps) {
     depositAmount: ''
   });
 
+  const [userPoints, setUserPoints] = useState(0);
+
   useEffect(() => {
-    setPitches(dataService.getPitches());
-    setBookings(dataService.getBookings());
-    setSales(dataService.getSales());
-  }, [selectedDate]);
+    const fetchData = async () => {
+      const p = await dataService.getPitches();
+      const b = await dataService.getBookings();
+      const s = await dataService.getSales();
+      const points = await dataService.getUserPoints(user.id);
+      
+      setPitches(p);
+      setBookings(b);
+      setSales(s);
+      setUserPoints(points);
+    };
+    fetchData();
+  }, [selectedDate, user.id]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isBookingModalOpen && bookingTimer !== null && bookingTimer > 0) {
+      interval = setInterval(() => {
+        setBookingTimer(prev => (prev !== null ? prev - 1 : null));
+      }, 1000);
+    } else if (isBookingModalOpen && bookingTimer === 0) {
+      setIsBookingModalOpen(false);
+      setBookingTimer(null);
+      toast.error("Tiempo de reserva agotado. El turno ha sido liberado.");
+    }
+    return () => clearInterval(interval);
+  }, [isBookingModalOpen, bookingTimer]);
+
+  useEffect(() => {
+    if (!isBookingModalOpen) {
+      setBookingTimer(null);
+    }
+  }, [isBookingModalOpen]);
 
   const handleBooking = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -103,7 +138,10 @@ export default function Dashboard({ user }: DashboardProps) {
         receiptUrl: formData.receipt,
         depositAmount: Number(formData.depositAmount) || 0
       });
-      setBookings(dataService.getBookings());
+      const updatedBookings = await dataService.getBookings();
+      setBookings(updatedBookings);
+      const updatedPoints = await dataService.getUserPoints(user.id);
+      setUserPoints(updatedPoints);
       setIsBookingModalOpen(false);
       setFormData({ 
         clientName: user.role === 'client' ? user.name : '', 
@@ -199,7 +237,6 @@ export default function Dashboard({ user }: DashboardProps) {
   }, 0);
 
   const occupiedPitchesCount = pitches.filter(p => getPitchStatus(p.id) === 'busy').length;
-  const userPoints = dataService.getUserPoints(user.id);
 
   const hours = Array.from({ length: 12 }, (_, i) => (i + 14) % 24); // 14:00 to 01:00 (starts at 00:00)
 
@@ -218,15 +255,30 @@ export default function Dashboard({ user }: DashboardProps) {
   useEffect(() => {
     const fetchWeather = async (lat: number, lon: number) => {
       try {
-        // Fetch location name
-        const locResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`);
-        const locData = await locResponse.json();
-        const city = locData.address.city || locData.address.town || locData.address.village || 'Tu ubicación';
+        let city = 'Tu ubicación';
+        try {
+          // Fetch location name with a timeout or just handle failure
+          const locResponse = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`, {
+            headers: {
+              'Accept-Language': 'es'
+            }
+          });
+          if (locResponse.ok) {
+            const locData = await locResponse.json();
+            city = locData.address.city || locData.address.town || locData.address.village || 'Tu ubicación';
+          }
+        } catch (locError) {
+          console.warn('Error fetching location name:', locError);
+        }
 
         const response = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`);
+        if (!response.ok) throw new Error(`Weather API responded with status: ${response.status}`);
+        
         const data = await response.json();
         const current = data.current_weather;
         
+        if (!current) throw new Error('No current weather data available');
+
         // Map WMO Weather interpretation codes (WW)
         const getCondition = (code: number) => {
           if (code === 0) return { text: 'Despejado', icon: '☀️' };
@@ -248,8 +300,13 @@ export default function Dashboard({ user }: DashboardProps) {
           locationName: city
         });
       } catch (error) {
-        console.error('Error fetching weather:', error);
-        setWeather({ temp: 22, condition: 'Soleado', icon: '☀️', locationName: 'Buenos Aires' });
+        // Fallback to a default state instead of logging an error
+        setWeather({ 
+          temp: 22, 
+          condition: 'Soleado', 
+          icon: '☀️', 
+          locationName: 'Buenos Aires' 
+        });
       }
     };
 
@@ -270,332 +327,342 @@ export default function Dashboard({ user }: DashboardProps) {
     }
   }, []);
 
+  if (user.role === 'client') {
+    return (
+      <div className="space-y-8 pb-20 max-w-4xl mx-auto">
+        <header className="flex flex-col gap-6">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-4">
+                <div className="md:hidden">
+                  <ArgentinaLogo size="sm" showText={true} />
+                </div>
+                <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-zinc-900 tracking-tighter uppercase italic">INICIO</h1>
+              </div>
+              <div className="flex flex-col">
+                <p className="text-zinc-500 font-bold text-lg italic">¡Hola, {user.name}! 👋</p>
+                <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Panel de Jugador</p>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+            <button 
+              onClick={() => onNavigate && onNavigate('calendar')}
+              className="w-full text-left bg-gradient-to-br from-sky-500 to-blue-600 p-6 rounded-[24px] shadow-lg shadow-sky-500/20 hover:scale-[1.02] transition-all group relative overflow-hidden"
+            >
+              <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <CalendarIcon className="w-8 h-8 text-white mb-4" />
+              <h3 className="text-2xl font-black text-white tracking-tighter uppercase italic">Reservar Cancha</h3>
+              <p className="text-sky-100 text-xs font-bold mt-1">Ver horarios disponibles</p>
+            </button>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+            <button 
+              onClick={() => onNavigate && onNavigate('bookings')}
+              className="w-full text-left bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 hover:border-sky-200 hover:shadow-md transition-all group relative overflow-hidden"
+            >
+              <List className="w-8 h-8 text-sky-500 mb-4" />
+              <h3 className="text-2xl font-black text-zinc-900 tracking-tighter uppercase italic">Mis Reservas</h3>
+              <p className="text-zinc-500 text-xs font-bold mt-1">Ver historial y próximas</p>
+            </button>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+            <button 
+              onClick={() => onNavigate && onNavigate('ranking')}
+              className="w-full text-left bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 hover:border-yellow-200 hover:shadow-md transition-all group relative overflow-hidden"
+            >
+              <Trophy className="w-8 h-8 text-yellow-500 mb-4" />
+              <h3 className="text-2xl font-black text-zinc-900 tracking-tighter uppercase italic">Ranking</h3>
+              <p className="text-zinc-500 text-xs font-bold mt-1">Mis puntos: {userPoints}</p>
+            </button>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+            <button 
+              onClick={() => onLogout && onLogout()}
+              className="w-full text-left bg-red-50 p-6 rounded-[24px] shadow-sm border border-red-100 hover:bg-red-100 transition-all group relative overflow-hidden"
+            >
+              <User className="w-8 h-8 text-red-500 mb-4" />
+              <h3 className="text-2xl font-black text-red-700 tracking-tighter uppercase italic">Cerrar Sesión</h3>
+              <p className="text-red-500/80 text-xs font-bold mt-1">Salir de la cuenta</p>
+            </button>
+          </motion.div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-10 pb-20">
-      {/* Header */}
-      <header className="flex flex-col gap-8">
-        {/* Top Level: Weather & Date/Buttons */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-100 pb-4">
-          <div className="flex items-center gap-4">
-            <div className="bg-white px-4 py-2 rounded-2xl border border-zinc-100 shadow-sm flex items-center gap-3">
-              <span className="text-2xl">{weather.icon}</span>
-              <div className="flex flex-col">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-black text-zinc-900 leading-none">{weather.temp}°C</span>
-                  <span className="text-[10px] font-black text-sky-500 uppercase tracking-tighter bg-sky-50 px-1.5 py-0.5 rounded-md">
-                    {weather.locationName}
-                  </span>
-                </div>
-                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">{weather.condition} | Ideal para jugar</span>
-              </div>
-            </div>
-            <div className="hidden md:block">
-              <ArgentinaCountdown />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative">
-              <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-zinc-100 shadow-sm">
-                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, -1))} className="h-8 w-8 p-0">
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <button 
-                  onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                  className="px-4 font-bold text-zinc-700 flex items-center gap-2 hover:bg-zinc-50 py-1 rounded-xl transition-colors text-sm"
-                >
-                  <CalendarIcon className="w-4 h-4 text-sky-500" />
-                  {format(selectedDate, "EEEE d 'de' MMMM", { locale: es })}
-                </button>
-                <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, 1))} className="h-8 w-8 p-0">
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-
-              {isCalendarOpen && (
-                <div className="absolute top-full right-0 mt-2 z-50 bg-white border border-zinc-100 rounded-3xl shadow-2xl p-4">
-                  <DayPicker
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      if (date) setSelectedDate(date);
-                      setIsCalendarOpen(false);
-                    }}
-                    locale={es}
-                    className="rdp-custom"
-                  />
-                </div>
-              )}
-            </div>
-
-            {user.role === 'admin' && (
-              <Button 
-                onClick={shareAvailability} 
-                disabled={isSharing}
-                variant="secondary"
-                className="gap-2 rounded-2xl border border-zinc-200"
-              >
-                <Share2 className="w-4 h-4" />
-                <span className="hidden sm:inline">{isSharing ? 'Generando...' : 'Compartir'}</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Level: Title & View Toggles */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
+      {/* Welcome & Stats Section */}
+      <header className="flex flex-col gap-10">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+          <div className="space-y-2">
+            <div className="flex items-center gap-4">
               <div className="md:hidden">
                 <ArgentinaLogo size="sm" showText={true} />
               </div>
-              <div className="hidden md:block">
-                <h1 className="text-5xl font-black text-zinc-900 tracking-tighter flex items-center gap-3">
-                  INICIO
-                </h1>
-              </div>
-              <div className="md:hidden h-6 w-px bg-zinc-200 mx-1" />
-              <div className="md:hidden">
-                <h1 className="text-2xl font-bold text-zinc-900 tracking-tight flex items-center gap-2">
-                  INICIO
-                </h1>
-              </div>
+              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-zinc-900 tracking-tighter uppercase italic">INICIO</h1>
             </div>
             <div className="flex flex-col">
-              <p className="text-zinc-500 font-bold md:text-base text-sm">Golazo te da la bienvenida, {user.name}</p>
-              <p className="text-zinc-400 text-xs font-medium uppercase tracking-widest">Panel de control Golazo</p>
+              <p className="text-zinc-500 font-bold text-lg italic">¡Hola, {user.name}! 👋</p>
+              <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Panel de control Golazo • Gestión Profesional</p>
             </div>
           </div>
-
-          <div className="flex items-center gap-3">
-            {/* View Toggles */}
-            <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
-              <button
-                onClick={() => setViewMode('day')}
-                className={cn(
-                  "p-2 rounded-xl transition-all flex items-center gap-2 relative overflow-hidden",
-                  viewMode === 'day' ? "text-zinc-900 shadow-lg border border-sky-300" : "text-zinc-400 hover:text-zinc-900"
-                )}
-              >
-                {viewMode === 'day' && (
-                  <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
-                )}
-                <LayoutGrid className="w-5 h-5 relative z-10" />
-              </button>
-              <button
-                onClick={() => setViewMode('week')}
-                className={cn(
-                  "p-2 rounded-xl transition-all flex items-center gap-2 relative overflow-hidden",
-                  viewMode === 'week' ? "text-zinc-900 shadow-lg border border-sky-300" : "text-zinc-400 hover:text-zinc-900"
-                )}
-              >
-                {viewMode === 'week' && (
-                  <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
-                )}
-                <List className="w-5 h-5 relative z-10" />
-              </button>
-            </div>
-
-            <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
-              <button
-                onClick={() => setIsCompact(!isCompact)}
-                className={cn(
-                  "p-2 rounded-xl transition-all",
-                  isCompact ? "bg-zinc-900 text-white" : "text-zinc-400 hover:text-zinc-900"
-                )}
-                title={isCompact ? "Vista Normal" : "Vista Compacta"}
-              >
-                {isCompact ? <Maximize2 className="w-5 h-5" /> : <Minimize2 className="w-5 h-5" />}
-              </button>
+          
+          <div className="flex items-center gap-4">
+            <div className="hidden md:block">
+              <ArgentinaLogo size="md" />
             </div>
           </div>
         </div>
+
+        {/* Stats Grid */}
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3">
+              <div className="w-2 h-8 bg-sky-500 rounded-full" />
+              Resumen de Hoy
+            </h2>
+            <Badge variant="neutral" className="px-4 py-1.5 rounded-xl border-zinc-200 text-zinc-400 font-black text-[10px] uppercase tracking-widest">
+              Actualizado hace 1 min
+            </Badge>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              { label: 'Turnos Hoy', value: todayBookings.length, icon: CalendarIcon, color: 'bg-blue-500', trend: '+12%', show: user.role === 'admin' },
+              { label: 'Ingresos Hoy', value: `$${todayIncome}`, icon: DollarSign, color: 'bg-emerald-500', trend: '+8%', show: user.role === 'admin' },
+              { label: 'Ingresos Mes', value: `$${monthIncome}`, icon: TrendingUp, color: 'bg-sky-500', trend: '+15%', show: user.role === 'admin' },
+              { label: 'Canchas Ocupadas', value: `${occupiedPitchesCount}/${pitches.length}`, icon: Activity, color: 'bg-orange-500', trend: 'Estable', show: user.role === 'admin' },
+            ].filter(s => s.show).map((stat, i) => (
+              <motion.div
+                key={stat.label}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.1 }}
+              >
+                <Card className="border-none shadow-sm bg-white overflow-hidden group hover:scale-[1.02] transition-all rounded-[20px] relative border border-zinc-100">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className={cn("p-3 rounded-xl text-white shadow-md", stat.color)}>
+                        <stat.icon className="w-5 h-5" />
+                      </div>
+                      <Badge variant="success" className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tighter">
+                        {stat.trend}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-zinc-400 font-black text-[9px] uppercase tracking-[0.2em]">{stat.label}</p>
+                      <h3 className="text-2xl font-black text-zinc-900 tracking-tighter italic uppercase">{stat.value}</h3>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </section>
       </header>
 
-      {/* Stats Grid */}
-      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { label: 'Turnos Hoy', value: todayBookings.length, icon: CalendarIcon, color: 'bg-blue-500', show: user.role === 'admin' },
-          { label: 'Ingresos Hoy', value: `$${todayIncome}`, icon: DollarSign, color: 'bg-sky-500', show: user.role === 'admin' },
-          { label: 'Ingresos Mes', value: `$${monthIncome}`, icon: TrendingUp, color: 'bg-purple-500', show: user.role === 'admin' },
-          { label: 'Canchas Ocupadas', value: `${occupiedPitchesCount}/${pitches.length}`, icon: Activity, color: 'bg-orange-500', show: user.role === 'admin' },
-          { label: 'Mis Puntos', value: userPoints, icon: Trophy, color: 'bg-yellow-500', show: user.role === 'client' },
-        ].filter(s => s.show).map((stat, i) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-          >
-            <Card className="border-none shadow-xl hover:shadow-2xl transition-all overflow-hidden group rounded-[32px] bg-white/90 backdrop-blur-sm ring-1 ring-zinc-100/50 hover:ring-sky-500/30 relative">
-              <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
-              <CardContent className="p-8 relative z-10">
-                <div className="flex items-center justify-between">
-                  <div className={cn(
-                    "w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-lg transition-transform group-hover:scale-110", 
-                    stat.color
-                  )}>
-                    <stat.icon className="w-7 h-7" />
-                  </div>
-                  <div className="text-right">
-                    <p className="font-black uppercase tracking-widest mb-1 text-zinc-400 text-xs">{stat.label}</p>
-                    <p className="font-black text-zinc-900 text-3xl">{stat.value}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
-      </section>
-
-      {/* Pitches Grid */}
-      <div className="space-y-8" ref={gridRef}>
-        <h2 className="text-3xl font-black text-zinc-900 tracking-tight">
-          {viewMode === 'day' ? 'Disponibilidad de Canchas' : 'Vista Semanal'}
-        </h2>
+      {/* Main Content Area: SaaS Premium Dashboard Layout */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
-        {viewMode === 'day' ? (
-          <section className={cn(
-            "grid gap-8",
-            isCompact ? "grid-cols-1 sm:grid-cols-2 lg:grid-cols-4" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-          )}>
+        {/* Left Column: Sidebar (3 columns) */}
+        <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1">
+          <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-sm font-black text-zinc-900 uppercase tracking-widest flex items-center gap-2">
+                <Clock className="w-4 h-4 text-sky-500" />
+                Agenda Hoy
+              </h3>
+              <Badge variant="neutral" className="text-[9px] font-black uppercase tracking-widest bg-zinc-50 border-zinc-100">
+                {format(selectedDate, 'dd/MM')}
+              </Badge>
+            </div>
+            
+            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {hours.map(hour => {
+                const timeStr = `${hour.toString().padStart(2, '0')}:00`;
+                const occupiedCount = bookings.filter(b => 
+                  b.startTime.getHours() === hour && 
+                  isSameDay(b.startTime, selectedDate) && 
+                  b.status === 'confirmed'
+                ).length;
+                
+                const isFullyOccupied = occupiedCount === pitches.length;
+
+                return (
+                  <div 
+                    key={hour}
+                    className={cn(
+                      "flex items-center justify-between p-3 rounded-xl border transition-all",
+                      isFullyOccupied 
+                        ? "bg-red-50/50 border-red-100 text-red-700" 
+                        : "bg-emerald-50/50 border-emerald-100 text-emerald-700"
+                    )}
+                  >
+                    <span className="font-bold text-xs">{timeStr}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-black uppercase tracking-tighter opacity-70">
+                        {occupiedCount}/{pitches.length}
+                      </span>
+                      <div className={cn(
+                        "w-1.5 h-1.5 rounded-full",
+                        isFullyOccupied ? "bg-red-500" : "bg-emerald-500"
+                      )} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-zinc-900 p-6 rounded-[24px] text-white shadow-xl relative overflow-hidden">
+            <div className="relative z-10">
+              <div className="flex items-center gap-2 mb-4">
+                <Zap className="w-4 h-4 text-sky-400" />
+                <span className="text-[10px] font-black uppercase tracking-widest">Ocupación</span>
+              </div>
+              <div className="text-3xl font-black italic tracking-tighter mb-1">
+                {Math.round((bookings.filter(b => isSameDay(b.startTime, selectedDate)).length / (hours.length * pitches.length)) * 100)}%
+              </div>
+              <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mt-3">
+                <div 
+                  className="h-full bg-sky-500 transition-all duration-1000" 
+                  style={{ width: `${(bookings.filter(b => isSameDay(b.startTime, selectedDate)).length / (hours.length * pitches.length)) * 100}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Center Column: Main Content (6 columns) */}
+        <main className="lg:col-span-6 space-y-8 order-1 lg:order-2">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3">
+              <div className="w-1 h-5 bg-sky-500 rounded-full" />
+              Canchas Disponibles
+            </h2>
+            <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-zinc-100 shadow-sm">
+              <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, -1))} className="h-8 w-8 p-0 rounded-lg">
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest">
+                {format(selectedDate, "d MMM", { locale: es })}
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, 1))} className="h-8 w-8 p-0 rounded-lg">
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {pitches.map((pitch) => {
               const status = getPitchStatus(pitch.id);
               const pitchBookings = bookings.filter(b => b.pitchId === pitch.id && isSameDay(b.startTime, selectedDate) && b.status === 'confirmed');
-              const availableTurns = hours.length - pitchBookings.length;
+              const occupancyPercentage = (pitchBookings.length / hours.length) * 100;
 
               return (
-                <motion.div key={pitch.id} layout>
-              <Card 
-                className="h-full border-none shadow-md hover:shadow-2xl transition-all group bg-white cursor-pointer ring-1 ring-zinc-100"
-                onClick={() => {
-                  setSelectedPitch(pitch);
-                  setIsPitchScheduleModalOpen(true);
-                }}
-              >
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                  <div>
-                    <h3 className={cn(
-                      "font-black text-zinc-900 group-hover:text-sky-600 transition-colors",
-                      isCompact ? "text-lg" : "text-xl"
-                    )}>{pitch.name}</h3>
-                    <Badge 
-                      variant={status === 'available' ? 'success' : 'danger'} 
-                      className="mt-1 px-3 py-1"
-                    >
-                      {status === 'available' ? 'Disponible' : 'En Juego'}
-                    </Badge>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{pitch.type}</span>
-                    <p className={cn("font-black text-sky-600", isCompact ? "text-xl" : "text-2xl")}>${pitch.price}</p>
-                  </div>
-                </CardHeader>
-                    <CardContent className={isCompact ? "p-4" : "p-6"}>
-                      <div className="space-y-4">
-                        <div className="flex items-center gap-2 text-zinc-500">
-                          <Clock className="w-4 h-4" />
-                          <span className="text-xs font-bold">{availableTurns} turnos disponibles hoy</span>
-                        </div>
-                        {!isCompact && (
-                          <div className="h-1.5 w-full bg-zinc-100 rounded-full overflow-hidden">
-                            <div 
-                              className={cn("h-full transition-all duration-1000", status === 'available' ? 'w-0' : 'w-full bg-red-500')} 
-                            />
-                          </div>
-                        )}
-                          <div className="pt-2">
-                            <Button 
-                              className="w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl shadow-sky-500/20 hover:bg-argentina hover:text-zinc-900 group-hover:scale-[1.02] transition-all"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedPitch(pitch);
-                                setIsPitchScheduleModalOpen(true);
-                              }}
-                            >
-                              Ver Horarios
-                            </Button>
-                          </div>
+                <Card 
+                  key={pitch.id}
+                  className="border-none shadow-sm hover:shadow-md transition-all group bg-white rounded-[24px] overflow-hidden border border-zinc-100"
+                >
+                  <div className="h-40 relative overflow-hidden">
+                    <img 
+                      src={`https://picsum.photos/seed/${pitch.name}/600/400`} 
+                      alt={pitch.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                    <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between">
+                      <div>
+                        <h3 className="font-black text-white text-lg uppercase italic tracking-tight leading-none">{pitch.name}</h3>
+                        <p className="text-[9px] font-black text-white/60 uppercase tracking-widest mt-1">{pitch.type}</p>
                       </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                      <Badge 
+                        variant={status === 'available' ? 'success' : 'danger'} 
+                        className="px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest bg-white/10 backdrop-blur-md border-white/20 text-white"
+                      >
+                        {status === 'available' ? 'Libre' : 'En Juego'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <CardContent className="p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-lg font-black text-zinc-900 tracking-tighter">${pitch.price}</span>
+                        <span className="text-[9px] font-bold uppercase text-zinc-400">/ hr</span>
+                      </div>
+                      <div className="h-1.5 w-24 bg-zinc-100 rounded-full overflow-hidden">
+                        <div 
+                          className={cn(
+                            "h-full transition-all duration-1000",
+                            occupancyPercentage > 80 ? "bg-red-500" : occupancyPercentage > 40 ? "bg-orange-500" : "bg-emerald-500"
+                          )} 
+                          style={{ width: `${occupancyPercentage}%` }}
+                        />
+                      </div>
+                    </div>
+
+                    <Button 
+                      className="w-full py-3 rounded-xl font-black text-[10px] tracking-widest uppercase bg-zinc-900 text-white hover:bg-zinc-800 transition-all"
+                      onClick={() => {
+                        setSelectedPitch(pitch);
+                        setIsPitchScheduleModalOpen(true);
+                      }}
+                    >
+                      Ver Horarios
+                    </Button>
+                  </CardContent>
+                </Card>
               );
             })}
-          </section>
-        ) : (
-          <section className="space-y-6">
-            {pitches.map((pitch) => (
-              <Card key={pitch.id} className="border-none shadow-sm bg-white">
-                <CardHeader className="bg-zinc-50">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-black text-zinc-900">{pitch.name}</h3>
-                    <span className="text-sm font-bold text-sky-600">${pitch.price} / hora</span>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0 overflow-x-auto">
-                  <div className="min-w-[800px]">
-                    <div className="grid grid-cols-8 border-b border-zinc-100">
-                      <div className="p-4 border-r border-zinc-100 bg-zinc-50/50 font-bold text-zinc-400 text-xs uppercase tracking-widest">Hora</div>
-                      {weekDays.map(day => (
-                        <div key={day.toISOString()} className="p-4 text-center border-r border-zinc-100 bg-zinc-50/50">
-                          <p className="text-xs font-black text-zinc-400 uppercase">{format(day, 'EEE', { locale: es })}</p>
-                          <p className="text-sm font-black text-zinc-900">{format(day, 'd')}</p>
-                        </div>
-                      ))}
-                    </div>
-                    {hours.map(hour => {
-                      const timeStr = `${hour.toString().padStart(2, '0')}:00`;
-                      return (
-                        <div key={hour} className="grid grid-cols-8 border-b border-zinc-100 last:border-0">
-                          <div className="p-4 border-r border-zinc-100 font-bold text-zinc-500 text-sm">{timeStr}</div>
-                          {weekDays.map(day => {
-                            const booking = bookings.find(b => 
-                              b.pitchId === pitch.id && 
-                              b.startTime.getHours() === hour &&
-                              isSameDay(b.startTime, day) &&
-                              b.status === 'confirmed'
-                            );
-                            const isBooked = !!booking;
-                            return (
-                              <div key={day.toISOString()} className="p-2 border-r border-zinc-100 flex items-center justify-center">
-                                <button
-                                  onClick={() => {
-                                    if (isBooked) {
-                                      if (user.role === 'admin') {
-                                        setSelectedBooking(booking);
-                                        setIsBookingDetailModalOpen(true);
-                                      }
-                                    } else {
-                                      setSelectedDate(day);
-                                      setSelectedPitch(pitch);
-                                      setSelectedTime(timeStr);
-                                      setIsBookingModalOpen(true);
-                                    }
-                                  }}
-                                  className={cn(
-                                    "w-full h-10 rounded-lg transition-all text-[10px] font-black uppercase",
-                                    isBooked 
-                                      ? (user.role === 'admin'
-                                          ? "bg-red-50 text-red-500 hover:bg-red-500 hover:text-white"
-                                          : "bg-red-50 text-red-500 cursor-not-allowed")
-                                      : "bg-sky-50 text-sky-600 hover:bg-sky-500 hover:text-white"
-                                  )}
-                                >
-                                  {isBooked ? 'Ocupado' : 'Libre'}
-                                </button>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </section>
-        )}
+          </div>
+        </main>
+
+        {/* Right Column: Widgets (3 columns) */}
+        <aside className="lg:col-span-3 space-y-6 order-3">
+          {/* Weather Widget */}
+          <div className="bg-white p-6 rounded-[24px] border border-zinc-100 shadow-sm flex flex-col items-center text-center">
+            <div className="w-16 h-16 bg-sky-50 rounded-full flex items-center justify-center mb-4">
+              <span className="text-4xl">{weather.icon}</span>
+            </div>
+            <div className="space-y-0.5">
+              <h4 className="text-3xl font-black text-zinc-900 tracking-tighter">{weather.temp}°C</h4>
+              <p className="text-[9px] font-black text-sky-500 uppercase tracking-widest">{weather.locationName}</p>
+              <p className="text-[10px] font-bold text-zinc-400 mt-1">{weather.condition}</p>
+            </div>
+          </div>
+
+          {/* World Cup Widget */}
+          <div className="bg-white p-6 rounded-[24px] border border-zinc-100 shadow-sm space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <Trophy className="w-4 h-4 text-sky-500" />
+              <h3 className="text-[10px] font-black text-zinc-900 uppercase tracking-widest">Mundial 2026</h3>
+            </div>
+            <ArgentinaCountdown />
+          </div>
+
+          {/* Quick Actions */}
+          <div className="space-y-3">
+            <Button 
+              variant="outline" 
+              className="w-full h-12 rounded-xl border-zinc-200 font-black text-[10px] uppercase tracking-widest gap-2"
+              onClick={() => onNavigate ? onNavigate('calendar') : window.location.href = '/calendar'}
+            >
+              <CalendarIcon className="w-4 h-4" />
+              Ir al Calendario
+            </Button>
+          </div>
+        </aside>
       </div>
 
       {/* Pitch Schedule Modal (Time Selection Menu) */}
@@ -661,6 +728,7 @@ export default function Dashboard({ user }: DashboardProps) {
                     } else {
                       setSelectedTime(timeStr);
                       setIsPitchScheduleModalOpen(false);
+                      setBookingTimer(300); // 5 minutes
                       setIsBookingModalOpen(true);
                     }
                   }}
@@ -703,6 +771,14 @@ export default function Dashboard({ user }: DashboardProps) {
         onClose={() => setIsBookingModalOpen(false)}
         title={`Reservar ${selectedPitch?.name}`}
       >
+        {bookingTimer !== null && (
+          <div className="flex items-center justify-center gap-2 bg-red-50 text-red-600 py-3 rounded-2xl border border-red-100 mb-6 animate-pulse">
+            <Timer className="w-5 h-5" />
+            <span className="font-black tracking-widest uppercase text-xs">
+              Tiempo restante: {Math.floor(bookingTimer / 60)}:{(bookingTimer % 60).toString().padStart(2, '0')}
+            </span>
+          </div>
+        )}
         <form onSubmit={handleBooking} className="space-y-6">
           <div className="bg-zinc-50 p-6 rounded-3xl space-y-3 border border-zinc-100">
             <div className="flex items-center gap-3 text-zinc-600">
@@ -769,7 +845,7 @@ export default function Dashboard({ user }: DashboardProps) {
               <label className="text-sm font-bold text-zinc-700 ml-1">Comprobante de transferencia</label>
               <div 
                 className={cn(
-                  "relative border-2 border-dashed rounded-2xl p-8 transition-all flex flex-col items-center justify-center gap-3 cursor-pointer group",
+                  "relative border-2 border-dashed rounded-2xl p-4 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group",
                   formData.receipt ? "border-sky-500 bg-sky-500/5" : "border-zinc-200 hover:border-sky-500 hover:bg-sky-500/5"
                 )}
                 onClick={() => document.getElementById('receipt-upload')?.click()}
@@ -784,29 +860,29 @@ export default function Dashboard({ user }: DashboardProps) {
                 
                 {formData.receipt ? (
                   <>
-                    <div className="w-12 h-12 bg-sky-500 rounded-full flex items-center justify-center text-white shadow-lg">
-                      <CheckCircle2 className="w-6 h-6" />
+                    <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white shadow-lg">
+                      <CheckCircle2 className="w-5 h-5" />
                     </div>
-                    <p className="text-sm font-black text-sky-600 uppercase tracking-widest">¡Comprobante cargado!</p>
+                    <p className="text-xs font-black text-sky-600 uppercase tracking-widest">¡Comprobante cargado!</p>
                     <button 
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setFormData(prev => ({ ...prev, receipt: null }));
                       }}
-                      className="text-[10px] font-black text-zinc-400 hover:text-red-500 uppercase tracking-widest"
+                      className="text-[9px] font-black text-zinc-400 hover:text-red-500 uppercase tracking-widest"
                     >
                       Cambiar imagen
                     </button>
                   </>
                 ) : (
                   <>
-                    <div className="w-12 h-12 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:text-sky-500 transition-colors">
-                      <Upload className="w-6 h-6" />
+                    <div className="w-10 h-10 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:text-sky-500 transition-colors">
+                      <Upload className="w-5 h-5" />
                     </div>
                     <div className="text-center">
-                      <p className="text-sm font-bold text-zinc-600">Haz clic para subir el comprobante</p>
-                      <p className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mt-1">MP, Transferencia, etc.</p>
+                      <p className="text-xs font-bold text-zinc-600">Haz clic para subir el comprobante</p>
+                      <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">MP, Transferencia, etc.</p>
                     </div>
                   </>
                 )}
@@ -940,7 +1016,8 @@ export default function Dashboard({ user }: DashboardProps) {
                 onClick={async () => {
                   try {
                     await api.cancelBooking(selectedBooking.id);
-                    setBookings(dataService.getBookings());
+                    const updatedBookings = await dataService.getBookings();
+                    setBookings(updatedBookings);
                     setIsBookingDetailModalOpen(false);
                   } catch (error) {
                     alert('Error al cancelar la reserva');

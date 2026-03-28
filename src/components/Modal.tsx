@@ -29,20 +29,22 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className={cn(
-                'bg-white w-full max-w-md rounded-3xl shadow-2xl pointer-events-auto overflow-hidden border border-zinc-100',
+                'bg-white w-full max-w-md rounded-[32px] shadow-[0_20px_50px_rgba(0,0,0,0.2)] pointer-events-auto flex flex-col border border-zinc-200',
                 className
               )}
             >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100">
-                <h3 className="text-xl font-semibold text-zinc-900">{title}</h3>
+              <div className="flex items-center justify-between px-8 py-6 border-b border-zinc-100 shrink-0">
+                <h3 className="text-xl font-black tracking-tight text-zinc-900 uppercase">{title}</h3>
                 <button
                   onClick={onClose}
                   className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
                 >
-                  <X className="w-5 h-5 text-zinc-500" />
+                  <X className="w-6 h-6 text-zinc-400" />
                 </button>
               </div>
-              <div className="px-6 py-6">{children}</div>
+              <div className="px-8 py-8 overflow-y-auto max-h-[calc(100vh-160px)] custom-scrollbar">
+                {children}
+              </div>
             </motion.div>
           </div>
         </>

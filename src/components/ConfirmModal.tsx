@@ -28,7 +28,7 @@ export function ConfirmModal({
     <Modal isOpen={isOpen} onClose={onClose} title={title} className="max-w-sm">
       <div className="space-y-6">
         <div className="flex flex-col items-center text-center space-y-4">
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center ${variant === 'danger' ? 'bg-red-50 text-red-500' : 'bg-argentina text-zinc-900'}`}>
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center ${variant === 'danger' ? 'bg-red-50 text-red-500' : 'bg-sky-50 text-sky-500'}`}>
             <AlertTriangle className="w-8 h-8" />
           </div>
           <p className="text-zinc-500 font-medium">

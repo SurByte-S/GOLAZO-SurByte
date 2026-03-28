@@ -1,12 +1,14 @@
 export type PitchType = 'F5' | 'F7' | 'F11';
 export type BookingStatus = 'confirmed' | 'cancelled' | 'pending' | 'finished';
-export type UserRole = 'admin' | 'client';
+export type UserRole = 'admin' | 'client' | 'superadmin';
 
 export interface User {
   id: string;
-  email: string;
+  email?: string;
+  phone?: string;
   name: string;
   role: UserRole;
+  password?: string;
 }
 
 export interface Pitch {
@@ -37,14 +39,37 @@ export interface Product {
   name: string;
   price: number;
   category: 'bebida' | 'comida' | 'otro';
+  stock: number;
+  min_stock: number;
+  active: boolean;
+}
+
+export interface StockMovement {
+  id: string;
+  productId: string;
+  quantity: number;
+  type: 'entrada' | 'salida' | 'ajuste';
+  source: string;
+  createdAt: Date;
+}
+
+export interface SaleItem {
+  id: string;
+  saleId: string;
+  productId: string;
+  quantity: number;
+  price: number;
 }
 
 export interface Sale {
   id: string;
-  productId: string;
-  quantity: number;
   totalPrice: number;
   date: Date;
+  paymentMethod?: 'efectivo' | 'transferencia';
+  items?: SaleItem[];
+  // Legacy fields for backward compatibility
+  productId?: string;
+  quantity?: number;
 }
 
 export interface AuditLog {

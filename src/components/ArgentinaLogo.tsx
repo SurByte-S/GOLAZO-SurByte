@@ -17,7 +17,7 @@ export const ArgentinaLogo = ({ size = 'md', showText = true, className }: Argen
     <div className={cn("flex items-center gap-4", className)}>
       <div className={cn(
         containerSize,
-        "bg-gradient-to-br from-sky-400 via-white to-sky-500 rounded-2xl flex flex-col items-center justify-center shadow-xl relative overflow-hidden border-2 border-white/50"
+        "bg-gradient-to-br from-sky-400 via-white to-sky-500 rounded-2xl flex flex-col items-center justify-center shadow-xl relative overflow-hidden border-2 border-white"
       )}>
         {/* Three Stars */}
         <div className="flex gap-1 mb-[-2px] z-20">
@@ -26,17 +26,17 @@ export const ArgentinaLogo = ({ size = 'md', showText = true, className }: Argen
           <Star className={cn(size === 'lg' ? 'w-4 h-4' : size === 'md' ? 'w-3 h-3' : 'w-2 h-2', "text-yellow-400 fill-yellow-400")} />
         </div>
         
-        <Trophy className={cn(iconSize, "text-yellow-500 drop-shadow-md z-10")} />
+        <Trophy className={cn(iconSize, "text-yellow-500 z-10")} />
       </div>
       {showText && (
         <div className="flex flex-col">
           <span className={cn(
             textSize,
-            "font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-sky-600 to-sky-400 drop-shadow-sm"
+            "font-black tracking-tighter text-sky-600"
           )}>
             GOLAZO
           </span>
-          <div className="h-1 w-full bg-gradient-to-r from-sky-400 via-white to-sky-400 rounded-full" />
+          <div className="h-1 w-full bg-gradient-to-r from-sky-400 via-sky-200 to-sky-400 rounded-full" />
         </div>
       )}
     </div>

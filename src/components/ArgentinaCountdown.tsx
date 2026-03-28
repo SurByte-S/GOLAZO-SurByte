@@ -130,32 +130,30 @@ export default function ArgentinaCountdown({ className, variant = 'card' }: Arge
   }
 
   return (
-    <div className={cn("flex flex-col items-end gap-4 relative", className)}>
-      <div className="flex flex-col items-end">
-        <div className="flex gap-2">
-          <div className="flex flex-col items-center bg-white/90 backdrop-blur-md border border-zinc-200 p-3 rounded-2xl min-w-[60px] shadow-2xl">
-            <span className="text-3xl font-black text-sky-400 leading-none">{timeLeft.days}</span>
-            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mt-1.5">Días</span>
-          </div>
-          <div className="flex flex-col items-center bg-white/90 backdrop-blur-md border border-zinc-200 p-3 rounded-2xl min-w-[60px] shadow-2xl">
-            <span className="text-3xl font-black text-zinc-900 leading-none">{timeLeft.hours}</span>
-            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mt-1.5">Horas</span>
-          </div>
-          <div className="flex flex-col items-center bg-white/90 backdrop-blur-md border border-zinc-200 p-3 rounded-2xl min-w-[60px] shadow-2xl">
-            <span className="text-3xl font-black text-zinc-900 leading-none">{timeLeft.minutes}</span>
-            <span className="text-[9px] font-black text-zinc-500 uppercase tracking-widest mt-1.5">Min</span>
-          </div>
+    <div className={cn("flex flex-col gap-4 relative w-full", className)}>
+      <div className="flex justify-center gap-2 w-full">
+        <div className="flex-1 flex flex-col items-center bg-zinc-50 border border-zinc-100 p-3 rounded-2xl shadow-sm group/box hover:bg-white transition-all">
+          <span className="text-2xl font-black text-sky-500 leading-none group-hover/box:scale-110 transition-transform">{timeLeft.days}</span>
+          <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mt-1">Días</span>
         </div>
-        <button 
-          onClick={() => setShowFixture(!showFixture)}
-          className="mt-3 flex items-center gap-2 px-5 py-2.5 rounded-full bg-sky-500/10 border border-sky-500/20 hover:bg-sky-500/20 transition-all group hover:scale-105 active:scale-95"
-        >
-          <Trophy className="w-4 h-4 text-sky-500 group-hover:scale-110 transition-transform" />
-          <span className="text-[11px] font-black text-sky-500 uppercase tracking-widest">
-            ARGENTINA JUEGA EN...
-          </span>
-        </button>
+        <div className="flex-1 flex flex-col items-center bg-zinc-50 border border-zinc-100 p-3 rounded-2xl shadow-sm group/box hover:bg-white transition-all">
+          <span className="text-2xl font-black text-zinc-900 leading-none group-hover/box:scale-110 transition-transform">{timeLeft.hours}</span>
+          <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mt-1">Horas</span>
+        </div>
+        <div className="flex-1 flex flex-col items-center bg-zinc-50 border border-zinc-100 p-3 rounded-2xl shadow-sm group/box hover:bg-white transition-all">
+          <span className="text-2xl font-black text-zinc-900 leading-none group-hover/box:scale-110 transition-transform">{timeLeft.minutes}</span>
+          <span className="text-[8px] font-black text-zinc-400 uppercase tracking-widest mt-1">Min</span>
+        </div>
       </div>
+      <button 
+        onClick={() => setShowFixture(!showFixture)}
+        className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-sky-50 text-sky-600 hover:bg-sky-100 transition-all group active:scale-95 w-full border border-sky-100"
+      >
+        <Trophy className="w-4 h-4 group-hover:rotate-12 transition-transform" />
+        <span className="text-[10px] font-black uppercase tracking-widest">
+          ARGENTINA JUEGA
+        </span>
+      </button>
 
       {/* Mini Fixture - Only visible when clicked */}
       <AnimatePresence>
@@ -164,31 +162,28 @@ export default function ArgentinaCountdown({ className, variant = 'card' }: Arge
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
-            className="overflow-hidden w-64"
+            className="overflow-hidden"
           >
-            <div className="bg-white/80 backdrop-blur-sm border border-zinc-100 rounded-2xl p-4 shadow-xl mt-2">
-              <div className="flex items-center justify-between mb-3 border-b border-zinc-100 pb-2">
+            <div className="bg-white border border-zinc-100 rounded-2xl p-4 shadow-lg mt-1">
+              <div className="flex items-center justify-between mb-3 border-b border-zinc-50 pb-2">
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-3 h-3 text-zinc-400" />
+                  <Calendar className="w-3 h-3 text-sky-500" />
                   <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest">Fixture Mundial 2026</span>
                 </div>
                 <button onClick={() => setShowFixture(false)}>
-                  <X className="w-3 h-3 text-zinc-400" />
+                  <X className="w-3 h-3 text-zinc-300" />
                 </button>
               </div>
               <div className="space-y-3">
                 {ARGENTINA_MATCHES.filter(m => m.competition.includes('Mundial')).map((match, i) => (
                   <div key={i} className="flex items-center justify-between gap-2">
                     <div className="flex flex-col">
-                      <span className="text-[10px] font-black text-zinc-900 truncate w-32">{match.opponent}</span>
+                      <span className="text-[10px] font-black text-zinc-800 truncate w-32">{match.opponent}</span>
                       <span className="text-[8px] font-bold text-zinc-400 uppercase">{match.competition}</span>
                     </div>
                     <div className="text-right">
                       <span className="text-[9px] font-black text-sky-500 block">
                         {format(match.date, "d 'de' MMM", { locale: es })}
-                      </span>
-                      <span className="text-[8px] font-bold text-zinc-400">
-                        {format(match.date, "HH:mm")} hs
                       </span>
                     </div>
                   </div>

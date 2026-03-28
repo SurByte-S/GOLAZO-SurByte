@@ -23,7 +23,10 @@ import {
   CheckCircle2,
   Star,
   Plus,
-  Share2
+  Share2,
+  Timer,
+  Activity,
+  Settings
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -47,12 +50,12 @@ export default function CalendarPage({ user }: CalendarProps) {
   const [view, setView] = useState<'day' | 'week'>('day');
   const [filterPitch, setFilterPitch] = useState<string>('all');
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
-  const [isCompact, setIsCompact] = useState(false);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
   const [isConfirmCancelOpen, setIsConfirmCancelOpen] = useState(false);
   const [hoveredSlot, setHoveredSlot] = useState<{ hour: number, day: Date, pitch: Pitch } | null>(null);
   
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [bookingTimer, setBookingTimer] = useState<number | null>(null);
   const [bookingData, setBookingData] = useState({
     pitch: null as Pitch | null,
     date: new Date(),
@@ -64,9 +67,55 @@ export default function CalendarPage({ user }: CalendarProps) {
   });
 
   useEffect(() => {
-    setPitches(dataService.getPitches());
-    setBookings(dataService.getBookings());
+    const fetchData = async () => {
+      const [fetchedPitches, fetchedBookings, fetchedDeactivated] = await Promise.all([
+        dataService.getPitches(),
+        dataService.getBookings(),
+        dataService.getDeactivatedSlots()
+      ]);
+      setPitches(fetchedPitches);
+      setBookings(fetchedBookings);
+      setDeactivatedSlots(fetchedDeactivated);
+    };
+    fetchData();
   }, [selectedDate]);
+
+  const [currentTime, setCurrentTime] = useState(new Date());
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const [isManagementMode, setIsManagementMode] = useState(false);
+  const [deactivatedSlots, setDeactivatedSlots] = useState<Set<string>>(new Set());
+  
+  const getSlotStatus = (date: Date, hour: number, pitchId: string) => {
+    const slotKey = `${format(date, 'yyyy-MM-dd')}-${hour}-${pitchId}`;
+    if (deactivatedSlots.has(slotKey)) return 'deactivated';
+
+    const slotDate = new Date(date);
+    slotDate.setHours(hour, 0, 0, 0);
+    
+    const isPast = slotDate < currentTime;
+    
+    const booking = bookings.find(b => 
+      b.pitchId === pitchId && 
+      isSameDay(b.startTime, date) && 
+      b.startTime.getHours() === hour &&
+      (b.status === 'confirmed' || b.status === 'pending' || b.status === 'finished')
+    );
+
+    if (booking) {
+      if (booking.isPaid || booking.status === 'finished') return 'occupied';
+      return 'partial';
+    }
+    
+    if (isPast) return 'past';
+    return 'available';
+  };
 
   const hours = Array.from({ length: 15 }, (_, i) => (i + 10) % 24); // 10:00 to 01:00
   
@@ -77,11 +126,37 @@ export default function CalendarPage({ user }: CalendarProps) {
         end: endOfWeek(selectedDate, { weekStartsOn: 1 })
       });
 
+  useEffect(() => {
+    if (view === 'week' && filterPitch === 'all' && pitches.length > 0) {
+      setFilterPitch(pitches[0].id);
+    }
+  }, [view, filterPitch, pitches]);
+
   const filteredPitches = filterPitch === 'all' 
     ? pitches 
     : pitches.filter(p => p.id === filterPitch);
 
   const isPromoHour = (hour: number) => hour >= 10 && hour <= 16;
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isBookingModalOpen && bookingTimer !== null && bookingTimer > 0) {
+      interval = setInterval(() => {
+        setBookingTimer(prev => (prev !== null ? prev - 1 : null));
+      }, 1000);
+    } else if (isBookingModalOpen && bookingTimer === 0) {
+      setIsBookingModalOpen(false);
+      setBookingTimer(null);
+      toast.error("Tiempo de reserva agotado. El turno ha sido liberado.");
+    }
+    return () => clearInterval(interval);
+  }, [isBookingModalOpen, bookingTimer]);
+
+  useEffect(() => {
+    if (!isBookingModalOpen) {
+      setBookingTimer(null);
+    }
+  }, [isBookingModalOpen]);
 
   const handleBookingSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -89,6 +164,12 @@ export default function CalendarPage({ user }: CalendarProps) {
 
     if (!bookingData.receipt) {
       toast.error('Por favor, carga el comprobante de la seña.');
+      return;
+    }
+
+    const deposit = Number(bookingData.depositAmount) || 0;
+    if (deposit < 500) {
+      toast.error('La seña mínima es de $500.');
       return;
     }
 
@@ -113,7 +194,8 @@ export default function CalendarPage({ user }: CalendarProps) {
         depositAmount: Number(bookingData.depositAmount) || 0
       });
       
-      setBookings(dataService.getBookings());
+      const updatedBookings = await dataService.getBookings();
+      setBookings(updatedBookings);
       setIsBookingModalOpen(false);
       setBookingData(prev => ({ ...prev, receipt: null, depositAmount: '' }));
       
@@ -144,369 +226,603 @@ export default function CalendarPage({ user }: CalendarProps) {
 
   return (
     <div className="space-y-6">
-      {/* Header Tier 1: Date Selector, Share, General Actions */}
-      <header className="space-y-6">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
-            <div className="relative">
-              <div className="flex items-center gap-1 bg-white p-1.5 rounded-2xl border border-zinc-200 shadow-saas">
-                <Button 
-                  variant="ghost" 
-                  className="h-12 w-12 p-0 rounded-xl" 
-                  onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? -1 : -7))}
-                >
-                  <ChevronLeft className="w-5 h-5" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  className="h-12 px-4 text-xs font-black hover:bg-zinc-100 rounded-xl" 
-                  onClick={() => setSelectedDate(new Date())}
-                >
-                  HOY
-                </Button>
-                <button 
-                  onClick={() => setIsCalendarOpen(!isCalendarOpen)}
-                  className="px-4 text-sm font-black text-zinc-700 min-w-[160px] text-center hover:bg-zinc-50 h-12 rounded-xl transition-colors flex items-center justify-center gap-2"
-                >
-                  <CalendarIcon className="w-4 h-4 text-primary" />
-                  {view === 'day' 
-                    ? format(selectedDate, "d 'de' MMMM", { locale: es })
-                    : `${format(days[0], "d MMM")} - ${format(days[6], "d MMM")}`
-                  }
-                </button>
-                <Button 
-                  variant="ghost" 
-                  className="h-12 w-12 p-0 rounded-xl" 
-                  onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? 1 : 7))}>
-                  <ChevronRight className="w-5 h-5" />
-                </Button>
-              </div>
-
-              {isCalendarOpen && (
-                <div className="absolute top-full left-0 mt-2 z-50 bg-white border border-zinc-200 rounded-3xl shadow-premium p-4">
-                  <DayPicker
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                      if (date) setSelectedDate(date);
-                      setIsCalendarOpen(false);
-                    }}
-                    locale={es}
-                    className="rdp-custom"
-                  />
-                </div>
-              )}
-            </div>
-            <h1 className="hidden xl:block text-2xl font-black text-zinc-900 tracking-tight">Calendario</h1>
+      {/* Header: Editorial & Professional */}
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-8 pb-4">
+        <div className="flex items-center gap-6">
+          <div className="w-20 h-20 bg-sky-600 rounded-[32px] flex items-center justify-center shadow-2xl shadow-sky-200 rotate-3 hover:rotate-0 transition-transform duration-500">
+            <CalendarIcon className="w-10 h-10 text-white" />
           </div>
-
-          <div className="grid grid-cols-2 lg:flex items-center gap-3">
-            <Button 
-              variant="outline" 
-              className="h-14 lg:h-12 font-black text-[11px] uppercase tracking-wider rounded-2xl border-zinc-200 shadow-saas bg-white"
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                toast.success('Link de disponibilidad copiado', {
-                  description: 'Ya podés compartirlo con tus clientes.'
-                });
-              }}
-            >
-              <Share2 className="w-4 h-4 mr-2 hidden sm:inline" />
-              Compartir disponibilidad
-            </Button>
-            <Button className="h-14 lg:h-12 font-black text-[11px] uppercase tracking-wider rounded-2xl shadow-premium bg-zinc-900 text-white hover:bg-zinc-800 flex items-center justify-center gap-2 relative overflow-hidden">
-              <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
-              <div className="w-4 h-3 rounded-[2px] overflow-hidden flex flex-col shadow-sm shrink-0 relative z-10">
-                <div className="h-1/3 bg-[#74acdf]" />
-                <div className="h-1/3 bg-white flex items-center justify-center">
-                  <div className="w-0.5 h-0.5 rounded-full bg-yellow-400" />
-                </div>
-                <div className="h-1/3 bg-[#74acdf]" />
-              </div>
-              <Plus className="w-4 h-4 hidden sm:inline relative z-10" />
-              <span className="relative z-10">Nueva Reserva</span>
-            </Button>
+          <div>
+            <h1 className="text-5xl font-black tracking-tighter text-zinc-900 mb-1 italic">Calendario</h1>
+            <div className="flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <p className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-[10px]">Actualizado en tiempo real</p>
+            </div>
           </div>
         </div>
 
-        {/* Header Tier 2: Filters, View Toggles, Compact Switch */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 pt-4 border-t border-zinc-100">
-          <div className="flex flex-1 items-center gap-3">
-            <div className="relative group flex-1 sm:max-w-xs">
-              <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 group-hover:text-primary transition-colors" />
-              <select
-                className="w-full bg-white pl-11 pr-4 h-14 rounded-2xl border border-zinc-200 shadow-saas font-black text-xs uppercase tracking-widest outline-none focus:ring-2 focus:ring-primary/20 appearance-none cursor-pointer hover:border-zinc-300 transition-all"
-                value={filterPitch}
-                onChange={e => setFilterPitch(e.target.value)}
-              >
-                <option value="all">Todas las canchas</option>
-                {pitches.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center bg-zinc-100 p-2 rounded-[24px] border border-zinc-200 shadow-inner">
+            <button
+              onClick={() => setView('day')}
+              className={cn(
+                "px-8 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300",
+                view === 'day' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
+              )}
+            >
+              Día
+            </button>
+            <button
+              onClick={() => setView('week')}
+              className={cn(
+                "px-8 py-3.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all duration-300",
+                view === 'week' ? "bg-white text-zinc-900 shadow-xl" : "text-zinc-500 hover:text-zinc-700"
+              )}
+            >
+              Semana
+            </button>
           </div>
+          
+          {user.role === 'admin' && (
+            <Button 
+              className={cn(
+                "h-16 px-10 rounded-[24px] gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0 border-2",
+                isManagementMode 
+                  ? "bg-amber-500 border-amber-500 text-white shadow-2xl shadow-amber-200" 
+                  : "bg-zinc-900 border-zinc-900 text-white hover:bg-zinc-800 shadow-2xl shadow-zinc-900/20"
+              )}
+              onClick={() => setIsManagementMode(!isManagementMode)}
+            >
+              <Settings className={cn("w-5 h-5", isManagementMode && "animate-spin-slow")} />
+              {isManagementMode ? 'Modo Gestión ON' : 'Gestionar Horarios'}
+            </Button>
+          )}
 
-          <div className="flex items-center gap-3">
-            <div className="flex flex-1 bg-white p-1.5 rounded-2xl border border-zinc-200 shadow-saas">
-              <button
-                onClick={() => setView('day')}
-                className={cn(
-                  "flex-1 sm:flex-none px-6 h-11 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 relative overflow-hidden",
-                  view === 'day' ? "text-zinc-900 shadow-saas border border-sky-300" : "text-zinc-500 hover:text-zinc-900"
-                )}
-              >
-                {view === 'day' && (
-                  <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
-                )}
-                {view === 'day' && (
-                  <div className="w-4 h-3 rounded-[2px] overflow-hidden flex flex-col shadow-sm shrink-0 relative z-10">
-                    <div className="h-1/3 bg-[#74acdf]" />
-                    <div className="h-1/3 bg-white flex items-center justify-center">
-                      <div className="w-0.5 h-0.5 rounded-full bg-yellow-400" />
-                    </div>
-                    <div className="h-1/3 bg-[#74acdf]" />
-                  </div>
-                )}
-                <span className="relative z-10">Día</span>
-              </button>
-              <button
-                onClick={() => setView('week')}
-                className={cn(
-                  "flex-1 sm:flex-none px-6 h-11 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 relative overflow-hidden",
-                  view === 'week' ? "text-zinc-900 shadow-saas border border-sky-300" : "text-zinc-500 hover:text-zinc-900"
-                )}
-              >
-                {view === 'week' && (
-                  <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ background: 'var(--bg-flag-ar)' }} />
-                )}
-                {view === 'week' && (
-                  <div className="w-4 h-3 rounded-[2px] overflow-hidden flex flex-col shadow-sm shrink-0 relative z-10">
-                    <div className="h-1/3 bg-[#74acdf]" />
-                    <div className="h-1/3 bg-white flex items-center justify-center">
-                      <div className="w-0.5 h-0.5 rounded-full bg-yellow-400" />
-                    </div>
-                    <div className="h-1/3 bg-[#74acdf]" />
-                  </div>
-                )}
-                <span className="relative z-10">Semana</span>
-              </button>
-            </div>
-
-            <div className="flex bg-white p-1.5 rounded-2xl border border-zinc-200 shadow-saas">
-              <button
-                onClick={() => setIsCompact(!isCompact)}
-                className={cn(
-                  "h-11 w-11 flex items-center justify-center rounded-xl transition-all",
-                  isCompact ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-900"
-                )}
-                title={isCompact ? "Vista Normal" : "Vista Compacta"}
-              >
-                {isCompact ? <Maximize2 className="w-5 h-5" /> : <Minimize2 className="w-5 h-5" />}
-              </button>
-            </div>
-          </div>
+          <Button 
+            className="h-16 px-10 rounded-[24px] bg-sky-600 text-white hover:bg-sky-700 shadow-2xl shadow-sky-200 gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0"
+            onClick={() => {
+              setBookingData({
+                ...bookingData,
+                pitch: pitches[0] || null,
+                date: new Date(),
+                time: "18:00"
+              });
+              setIsBookingModalOpen(true);
+            }}
+          >
+            <Plus className="w-5 h-5" />
+            Nueva Reserva
+          </Button>
         </div>
       </header>
 
-      {/* Promo Banner */}
-      <motion.div 
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="bg-sky-500/10 border border-sky-500/20 p-5 rounded-3xl flex items-center justify-between gap-4 shadow-lg shadow-sky-500/5"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-12 h-12 bg-sky-500 rounded-2xl flex items-center justify-center shadow-lg shadow-sky-500/20">
-            <Zap className="w-6 h-6 text-white animate-pulse" />
-          </div>
-          <div>
-            <h3 className="text-base font-black text-zinc-900 tracking-tight">¡Horarios Promocionales! 🔥</h3>
-            <p className="text-xs font-bold text-zinc-500">Hoy de 10:00 a 16:00 sumás <span className="text-sky-600 font-black">+1.5 puntos</span> por reserva.</p>
-          </div>
-        </div>
-      </motion.div>
-
-      <Card className="border-none shadow-premium rounded-[2.5rem] bg-white relative">
-        <div 
-          id="calendar-scroll-container"
-          className="w-full overflow-x-hidden scrollbar-thin scrollbar-thumb-zinc-200"
-        >
-          <div className="w-full relative">
-            {/* Football Pitch Background Overlay (Subtle) */}
-            <div className="absolute inset-0 pointer-events-none opacity-[0.03] z-0" 
-                 style={{ 
-                   backgroundImage: `url("data:image/svg+xml,%3Csvg width='400' height='600' viewBox='0 0 400 600' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='400' height='600' fill='%2374acdf'/%3E%3Cline x1='0' y1='300' x2='400' y2='300' stroke='white' stroke-width='4'/%3E%3Ccircle cx='200' cy='300' r='60' fill='none' stroke='white' stroke-width='4'/%3E%3Crect x='100' y='0' width='200' height='100' fill='none' stroke='white' stroke-width='4'/%3E%3Crect x='100' y='500' width='200' height='100' fill='none' stroke='white' stroke-width='4'/%3E%3C/svg%3E")`,
-                   backgroundSize: '100% 100%'
-                 }} 
-            />
-
-            {/* Header Row - Sticky */}
-            <div 
-              className="grid border-b border-zinc-100 bg-white/90 backdrop-blur-md sticky top-0 z-40 shadow-sm"
-              style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}
+      {/* Navigation & Filters Bar: Clean Utility */}
+      <div className="flex flex-col xl:flex-row items-stretch xl:items-center gap-6 bg-white p-6 rounded-[40px] border border-zinc-100 shadow-2xl shadow-zinc-200/20">
+        <div className="flex flex-col sm:flex-row items-center gap-4 flex-1">
+          <div className="flex items-center bg-zinc-50 rounded-[24px] border border-zinc-200 p-2 w-full sm:w-auto">
+            <Button 
+              variant="ghost" 
+              className="h-12 w-12 p-0 rounded-xl hover:bg-white hover:shadow-md transition-all" 
+              onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? -1 : -7))}
             >
-              <div className="p-4 border-r border-zinc-100 bg-zinc-50/50 flex items-center justify-center">
-                <Trophy className="w-5 h-5 text-zinc-300" />
-              </div>
-              {days.map(day => (
-                <div 
-                  key={day.toString()} 
-                  className={cn(
-                    "p-4 text-center border-r border-zinc-100 last:border-r-0 bg-zinc-50/50 transition-all",
-                    isSameDay(day, new Date()) && "bg-sky-50 ring-2 ring-inset ring-sky-500/20"
-                  )}
-                >
-                  <p className={cn(
-                    "text-[10px] uppercase tracking-[0.2em] font-black mb-1",
-                    isSameDay(day, new Date()) ? "text-sky-600" : "text-zinc-400"
-                  )}>
-                    {format(day, 'EEEE', { locale: es })}
-                  </p>
-                  <p className={cn(
-                    "text-2xl font-black tracking-tighter",
-                    isSameDay(day, new Date()) ? "text-sky-600" : "text-zinc-900"
-                  )}>
-                    {format(day, 'd')}
-                  </p>
-                </div>
-              ))}
-            </div>
+              <ChevronLeft className="w-6 h-6" />
+            </Button>
+            <button 
+              onClick={() => setIsCalendarOpen(!isCalendarOpen)}
+              className="flex-1 sm:flex-none px-8 text-sm font-black text-zinc-900 min-w-[200px] text-center hover:bg-white hover:shadow-md h-12 rounded-xl transition-all flex items-center justify-center gap-3 relative"
+            >
+              <CalendarIcon className="w-4 h-4 text-sky-500" />
+              {view === 'day' 
+                ? format(selectedDate, "d 'de' MMMM", { locale: es })
+                : `${format(days[0], "d MMM")} - ${format(days[6], "d MMM")}`
+              }
+              
+              <AnimatePresence>
+                {isCalendarOpen && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 15, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 15, scale: 0.95 }}
+                    className="absolute top-full left-1/2 -translate-x-1/2 mt-6 z-50 bg-white border border-zinc-200 rounded-[40px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.15)] p-8 pointer-events-auto"
+                  >
+                    <DayPicker
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={(date) => {
+                        if (date) setSelectedDate(date);
+                        setIsCalendarOpen(false);
+                      }}
+                      locale={es}
+                      className="rdp-custom"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </button>
+            <Button 
+              variant="ghost" 
+              className="h-12 w-12 p-0 rounded-xl hover:bg-white hover:shadow-md transition-all" 
+              onClick={() => setSelectedDate(d => addDays(d, view === 'day' ? 1 : 7))}
+            >
+              <ChevronRight className="w-6 h-6" />
+            </Button>
+          </div>
 
-            {/* Time Rows */}
-            <div className="relative z-10">
-              {hours.map(hour => (
+          <Button 
+            variant="outline" 
+            className="h-16 px-10 rounded-[24px] border-zinc-200 font-black text-[11px] uppercase tracking-widest hover:bg-zinc-50 w-full sm:w-auto"
+            onClick={() => setSelectedDate(new Date())}
+          >
+            HOY
+          </Button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-center gap-4">
+          <div className="relative w-full sm:w-80">
+            <Filter className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <select
+              className="w-full bg-zinc-50 pl-14 pr-8 h-16 rounded-[24px] border border-zinc-200 font-black text-[11px] uppercase tracking-widest outline-none focus:ring-4 focus:ring-sky-500/10 appearance-none cursor-pointer hover:bg-white transition-all"
+              value={filterPitch}
+              onChange={e => setFilterPitch(e.target.value)}
+            >
+              <option value="all">Todas las canchas</option>
+              {pitches.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <Button 
+            variant="outline" 
+            className="h-16 px-10 rounded-[24px] border-zinc-200 font-black text-[11px] uppercase tracking-widest gap-4 w-full sm:w-auto hover:bg-zinc-50"
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href);
+              toast.success('Link de disponibilidad copiado');
+            }}
+          >
+            <Share2 className="w-5 h-5" />
+            Compartir
+          </Button>
+        </div>
+      </div>
+
+      {/* Calendar Grid & Mobile List View */}
+      <div className="space-y-6">
+        {/* Desktop Grid View */}
+        <div className="hidden md:block">
+          <Card className="border-none shadow-2xl rounded-[32px] bg-white overflow-hidden border border-zinc-100">
+            <div className="w-full overflow-x-auto custom-scrollbar">
+              <div className="min-w-[1000px] lg:min-w-full relative">
+                {/* Header Row */}
                 <div 
-                  key={hour} 
-                  id={`slot-${hour}`}
-                  className={cn(
-                    "grid border-b border-zinc-100 last:border-b-0 group/row",
-                    isCompact ? "min-h-[100px]" : "min-h-[180px]"
-                  )}
-                  style={{ gridTemplateColumns: `100px repeat(${days.length}, 1fr)` }}
+                  className="grid border-b border-zinc-100 bg-zinc-50/80 backdrop-blur-md sticky top-0 z-40"
+                  style={{ 
+                    gridTemplateColumns: view === 'day' 
+                      ? `120px repeat(${filteredPitches.length}, 1fr)` 
+                      : `120px repeat(7, 1fr)` 
+                  }}
                 >
-                  <div className="p-4 border-r border-zinc-100 bg-zinc-50/30 flex flex-col items-center justify-center gap-2 sticky left-0 z-20 backdrop-blur-sm">
-                    <span className="text-xl font-black text-zinc-400 group-hover/row:text-zinc-900 transition-colors">
-                      {hour.toString().padStart(2, '0')}:00
-                    </span>
-                    {isPromoHour(hour) && (
-                      <Badge variant="success" className="bg-sky-500 text-white border-none text-[9px] px-2 py-0.5 font-black shadow-sm shadow-sky-500/20">PROMO</Badge>
-                    )}
+                  <div className="p-6 flex flex-col items-center justify-center border-r border-zinc-100 bg-white">
+                    <Clock className="w-5 h-5 text-zinc-400 mb-1" />
+                    <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Hora</span>
                   </div>
-                  {days.map(day => (
-                    <div key={day.toString()} className="p-2 border-r border-zinc-100 last:border-r-0 relative">
-                      <div className="grid grid-cols-1 gap-2 h-full">
-                        {filteredPitches.map(pitch => {
+                  {view === 'day' ? (
+                    filteredPitches.map(pitch => (
+                      <div key={pitch.id} className="p-6 text-center border-r border-zinc-100 last:border-r-0 transition-all">
+                        <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{pitch.type}</p>
+                        <p className="text-xl font-black tracking-tight text-zinc-900">{pitch.name}</p>
+                      </div>
+                    ))
+                  ) : (
+                    days.map(day => (
+                      <div key={day.toISOString()} className="p-6 text-center border-r border-zinc-100 last:border-r-0 transition-all">
+                        <p className="text-[10px] uppercase tracking-[0.3em] font-black text-sky-600 mb-1">{format(day, 'EEE', { locale: es })}</p>
+                        <p className="text-xl font-black tracking-tight text-zinc-900">{format(day, 'd MMM')}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                {/* Time Rows */}
+                <div className="divide-y divide-zinc-100">
+                  {hours.map(hour => (
+                    <div 
+                      key={hour} 
+                      className="grid group/row min-h-[80px]"
+                      style={{ 
+                        gridTemplateColumns: view === 'day' 
+                          ? `120px repeat(${filteredPitches.length}, 1fr)` 
+                          : `120px repeat(7, 1fr)` 
+                      }}
+                    >
+                      <div className={cn(
+                        "p-6 border-r border-zinc-100 bg-white flex items-center justify-center sticky left-0 z-20 transition-colors duration-500",
+                        isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour && "bg-sky-50/50"
+                      )}>
+                        <div className="flex flex-col items-center">
+                          <span className={cn(
+                            "text-lg font-black transition-all duration-300",
+                            isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour ? "text-sky-600 scale-110" : "text-zinc-400 group-hover/row:text-zinc-900"
+                          )}>
+                            {hour.toString().padStart(2, '0')}:00
+                          </span>
+                          {isPromoHour(hour) && (
+                            <span className="text-[8px] font-black text-amber-500 uppercase tracking-tighter mt-1 flex items-center gap-0.5">
+                              <Zap className="w-2 h-2 fill-amber-500" />
+                              Promo
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {view === 'day' ? (
+                        filteredPitches.map(pitch => {
+                          const status = getSlotStatus(selectedDate, hour, pitch.id);
                           const booking = bookings.find(b => 
                             b.pitchId === pitch.id && 
+                            isSameDay(b.startTime, selectedDate) && 
                             b.startTime.getHours() === hour &&
-                            isSameDay(b.startTime, day) &&
                             b.status === 'confirmed'
                           );
 
-                          const isOccupied = !!booking;
-                          const isPromo = isPromoHour(hour);
-                          const isOwnBooking = booking?.userId === user.id;
-                          const canSeeDetails = user.role === 'admin' || isOwnBooking;
+                          const isOccupied = status === 'occupied' || status === 'partial';
+                          const isPast = status === 'past';
+                          const isAvailable = status === 'available';
+                          const isPartial = status === 'partial';
+                          const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
 
                           return (
-                            <motion.div
-                              key={`${pitch.id}-${hour}-${day.toISOString()}`}
-                              className="relative h-full"
-                              onMouseEnter={() => !isOccupied && setHoveredSlot({ hour, day, pitch })}
-                              onMouseLeave={() => setHoveredSlot(null)}
-                            >
-                              <div
-                                role="button"
-                                tabIndex={isOccupied && !canSeeDetails ? -1 : 0}
+                            <div key={pitch.id} className="p-2 border-r border-zinc-100 last:border-r-0 relative bg-white group/cell">
+                              <motion.button
+                                whileHover={!isPast ? { scale: 1.02, y: -2 } : {}}
+                                whileTap={!isPast ? { scale: 0.98 } : {}}
+                                disabled={isPast}
                                 onClick={() => {
+                                  if (isManagementMode) {
+                                    const slotKey = `${format(selectedDate, 'yyyy-MM-dd')}-${hour}-${pitch.id}`;
+                                    setDeactivatedSlots(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(slotKey)) next.delete(slotKey);
+                                      else next.add(slotKey);
+                                      return next;
+                                    });
+                                    toast.info(deactivatedSlots.has(slotKey) ? 'Horario activado' : 'Horario desactivado');
+                                    return;
+                                  }
+
                                   if (isOccupied) {
-                                    if (canSeeDetails) setSelectedBooking(booking);
-                                  } else {
+                                    if (canSeeDetails && booking) setSelectedBooking(booking);
+                                  } else if (!isPast && status !== 'deactivated') {
                                     setBookingData({
                                       ...bookingData,
                                       pitch,
-                                      date: day,
+                                      date: selectedDate,
                                       time: `${hour.toString().padStart(2, '0')}:00`
                                     });
+                                    setBookingTimer(300);
                                     setIsBookingModalOpen(true);
                                   }
                                 }}
                                 className={cn(
-                                  "w-full h-full p-4 rounded-[1.5rem] text-left transition-all relative overflow-hidden group/slot flex flex-col justify-between border-2 outline-none",
-                                  isOccupied 
-                                    ? "bg-zinc-50/80 border-zinc-100 text-zinc-400 cursor-default grayscale opacity-60" 
-                                    : isPromo 
-                                      ? "bg-sky-50 border-sky-200 text-sky-700 hover:bg-sky-100 hover:border-sky-300 cursor-pointer shadow-sm"
-                                      : "bg-white border-zinc-100 text-zinc-700 hover:bg-sky-50 hover:border-sky-200 cursor-pointer shadow-sm",
-                                  !isOccupied && "hover:scale-[1.02] hover:shadow-md active:scale-[0.98]"
+                                  "w-full h-full min-h-[60px] p-3 rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2",
+                                  isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
+                                  status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                                  isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
+                                  isPartial && "bg-amber-50 border-amber-100 text-amber-700 hover:bg-amber-100/50",
+                                  isAvailable && "bg-emerald-50 border-emerald-100 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100/50 shadow-sm",
+                                  isManagementMode && "ring-2 ring-amber-500/20"
                                 )}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <div className="flex items-center gap-1.5">
+                                  <div className="flex items-center gap-2">
                                     <div className={cn(
-                                      "w-2.5 h-2.5 rounded-full",
-                                      isOccupied ? "bg-zinc-300" : isPromo ? "bg-sky-500 animate-pulse" : "bg-sky-400"
+                                      "w-2 h-2 rounded-full",
+                                      isPast ? "bg-zinc-300" : status === 'deactivated' ? "bg-zinc-500" : isOccupied && !isPartial ? "bg-red-500" : isPartial ? "bg-amber-500" : "bg-emerald-500"
                                     )} />
-                                    <span className="text-[11px] font-black uppercase tracking-widest opacity-80 truncate">
-                                      {pitch.name}
+                                    <span className="text-[10px] font-black uppercase tracking-widest opacity-70">
+                                      {isPast ? 'PASADO' : status === 'deactivated' ? 'DESACTIVADO' : isOccupied ? (canSeeDetails ? booking?.clientName : 'OCUPADO') : 'LIBRE'}
                                     </span>
                                   </div>
-                                  {!isOccupied && isPromo && (
-                                    <Zap className="w-3.5 h-3.5 text-sky-500" />
-                                  )}
+                                  {isAvailable && !isManagementMode && <Plus className="w-3 h-3 opacity-40" />}
+                                  {isManagementMode && <Zap className={cn("w-3 h-3", status === 'deactivated' ? "text-zinc-400" : "text-amber-500")} />}
+                                  {isOccupied && booking?.isPaid && <CheckCircle2 className="w-3 h-3 text-red-500" />}
                                 </div>
-
-                                <div className="mt-2 flex items-end justify-between">
-                                  <div>
-                                    <p className="text-sm font-black truncate max-w-[120px] flex items-center gap-1.5">
-                                      {isOccupied ? (canSeeDetails ? booking.clientName : 'RESERVADO') : 'DISPONIBLE'}
-                                      {isOccupied && booking.isPaid && (
-                                        <CheckCircle2 className="w-3.5 h-3.5 text-sky-500 shrink-0" />
-                                      )}
-                                    </p>
-                                    {!isOccupied && (
-                                      <p className="text-[11px] font-bold opacity-60 mt-0.5 text-sky-600/70">
-                                        Click para reservar
-                                      </p>
-                                    )}
-                                  </div>
-                                  {!isOccupied && (
-                                    <div className={cn(
-                                      "px-2.5 py-1 rounded-full text-[10px] font-black shadow-sm",
-                                      isPromo ? "bg-sky-500 text-white" : "bg-sky-100 text-sky-600"
-                                    )}>
-                                      +{isPromo ? '1.5' : '1'} PTS
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* Hover Overlay */}
-                                <AnimatePresence>
-                                  {hoveredSlot?.hour === hour && hoveredSlot?.pitch.id === pitch.id && isSameDay(hoveredSlot.day, day) && (
-                                    <motion.div
-                                      initial={{ opacity: 0, scale: 1.1 }}
-                                      animate={{ opacity: 1, scale: 1 }}
-                                      exit={{ opacity: 0, scale: 1.1 }}
-                                      className="absolute inset-0 z-10 bg-argentina backdrop-blur-[2px] flex flex-col items-center justify-center gap-2"
-                                    >
-                                      <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
-                                        <Plus className="w-5 h-5 text-zinc-900" />
-                                      </div>
-                                      <span className="text-[10px] font-black text-zinc-900 tracking-[0.2em] uppercase">Reservar</span>
-                                    </motion.div>
-                                  )}
-                                </AnimatePresence>
-                              </div>
-                            </motion.div>
+                                
+                                {!isPast && isAvailable && !isManagementMode && (
+                                  <p className="text-[10px] font-bold mt-1 opacity-60">Click para reservar</p>
+                                )}
+                                {isManagementMode && (
+                                  <p className="text-[10px] font-bold mt-1 text-amber-600">Click para {status === 'deactivated' ? 'activar' : 'desactivar'}</p>
+                                )}
+                              </motion.button>
+                            </div>
                           );
-                        })}
-                      </div>
+                        })
+                      ) : (
+                        days.map(day => {
+                          // In week view, we use the first filtered pitch or the selected one
+                          const targetPitch = filteredPitches[0] || pitches[0];
+                          if (!targetPitch) return null;
+
+                          const status = getSlotStatus(day, hour, targetPitch.id);
+                          const booking = bookings.find(b => 
+                            b.pitchId === targetPitch.id && 
+                            isSameDay(b.startTime, day) && 
+                            b.startTime.getHours() === hour &&
+                            b.status === 'confirmed'
+                          );
+
+                          const isOccupied = status === 'occupied' || status === 'partial';
+                          const isPast = status === 'past';
+                          const isAvailable = status === 'available';
+                          const isPartial = status === 'partial';
+                          const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
+
+                          return (
+                            <div key={day.toISOString()} className="p-2 border-r border-zinc-100 last:border-r-0 relative bg-white group/cell">
+                              <motion.button
+                                whileHover={!isPast ? { scale: 1.02, y: -2 } : {}}
+                                whileTap={!isPast ? { scale: 0.98 } : {}}
+                                disabled={isPast}
+                                onClick={() => {
+                                  if (isManagementMode) {
+                                    const slotKey = `${format(day, 'yyyy-MM-dd')}-${hour}-${targetPitch.id}`;
+                                    setDeactivatedSlots(prev => {
+                                      const next = new Set(prev);
+                                      if (next.has(slotKey)) next.delete(slotKey);
+                                      else next.add(slotKey);
+                                      return next;
+                                    });
+                                    return;
+                                  }
+
+                                  if (isOccupied) {
+                                    if (canSeeDetails && booking) setSelectedBooking(booking);
+                                  } else if (!isPast && status !== 'deactivated') {
+                                    setBookingData({
+                                      ...bookingData,
+                                      pitch: targetPitch,
+                                      date: day,
+                                      time: `${hour.toString().padStart(2, '0')}:00`
+                                    });
+                                    setBookingTimer(300);
+                                    setIsBookingModalOpen(true);
+                                  }
+                                }}
+                                className={cn(
+                                  "w-full h-full min-h-[60px] p-3 rounded-2xl text-left transition-all relative overflow-hidden flex flex-col justify-center border-2",
+                                  isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 cursor-not-allowed grayscale",
+                                  status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                                  isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700 hover:bg-red-100/50",
+                                  isPartial && "bg-amber-50 border-amber-100 text-amber-700 hover:bg-amber-100/50",
+                                  isAvailable && "bg-emerald-50 border-emerald-100 text-emerald-700 hover:border-emerald-300 hover:bg-emerald-100/50 shadow-sm",
+                                  isManagementMode && "ring-2 ring-amber-500/20"
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2">
+                                    <div className={cn(
+                                      "w-2 h-2 rounded-full",
+                                      isPast ? "bg-zinc-300" : status === 'deactivated' ? "bg-zinc-500" : isOccupied && !isPartial ? "bg-red-500" : isPartial ? "bg-amber-500" : "bg-emerald-500"
+                                    )} />
+                                    <span className="text-[10px] font-black uppercase tracking-widest opacity-70">
+                                      {isPast ? 'PASADO' : status === 'deactivated' ? 'DESACTIVADO' : isOccupied ? (canSeeDetails ? booking?.clientName : 'OCUPADO') : 'LIBRE'}
+                                    </span>
+                                  </div>
+                                </div>
+                              </motion.button>
+                            </div>
+                          );
+                        })
+                      )}
                     </div>
                   ))}
                 </div>
-              ))}
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {/* Mobile List View: Vertical Agenda */}
+        <div className="md:hidden space-y-4">
+          <div className="flex items-center justify-between px-4">
+            <h3 className="text-xl font-black text-zinc-900 uppercase tracking-tight">
+              {view === 'day' ? 'Agenda del Día' : 'Agenda Semanal'}
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">En vivo</span>
             </div>
           </div>
+
+          <div className="space-y-6">
+            {hours.map(hour => (
+              <div key={hour} className="space-y-3">
+                <div className="flex items-center gap-3 px-4 sticky top-0 bg-zinc-50/90 backdrop-blur-sm py-2 z-10">
+                  <span className={cn(
+                    "text-sm font-black uppercase tracking-widest",
+                    isSameDay(selectedDate, currentTime) && currentTime.getHours() === hour ? "text-sky-600" : "text-zinc-900"
+                  )}>
+                    {hour.toString().padStart(2, '0')}:00 hs
+                  </span>
+                  {isPromoHour(hour) && (
+                    <Badge variant="neutral" className="bg-amber-100 text-amber-700 border-none text-[8px] h-4 px-1.5 flex items-center gap-0.5">
+                      <Zap className="w-2 h-2 fill-amber-700" /> PROMO
+                    </Badge>
+                  )}
+                  <div className="h-px flex-1 bg-zinc-200" />
+                </div>
+                
+                <div className="grid grid-cols-1 gap-3 px-4">
+                  {view === 'day' ? (
+                    filteredPitches.map(pitch => {
+                      const status = getSlotStatus(selectedDate, hour, pitch.id);
+                      const booking = bookings.find(b => 
+                        b.pitchId === pitch.id && 
+                        isSameDay(b.startTime, selectedDate) && 
+                        b.startTime.getHours() === hour &&
+                        b.status === 'confirmed'
+                      );
+
+                      const isOccupied = status === 'occupied' || status === 'partial';
+                      const isPast = status === 'past';
+                      const isAvailable = status === 'available';
+                      const isPartial = status === 'partial';
+                      const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
+
+                      return (
+                        <button
+                          key={pitch.id}
+                          disabled={isPast}
+                          onClick={() => {
+                            if (isManagementMode) {
+                              const slotKey = `${format(selectedDate, 'yyyy-MM-dd')}-${hour}-${pitch.id}`;
+                              setDeactivatedSlots(prev => {
+                                const next = new Set(prev);
+                                if (next.has(slotKey)) next.delete(slotKey);
+                                else next.add(slotKey);
+                                return next;
+                              });
+                              return;
+                            }
+                            if (isOccupied) {
+                              if (canSeeDetails && booking) setSelectedBooking(booking);
+                            } else if (!isPast && isAvailable) {
+                              setBookingData({
+                                ...bookingData,
+                                pitch,
+                                date: selectedDate,
+                                time: `${hour.toString().padStart(2, '0')}:00`
+                              });
+                              setBookingTimer(300);
+                              setIsBookingModalOpen(true);
+                            }
+                          }}
+                          className={cn(
+                            "w-full p-4 rounded-2xl text-left transition-all flex items-center justify-between border-2",
+                            isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
+                            status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                            isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
+                            isPartial && "bg-amber-50 border-amber-100 text-amber-700",
+                            isAvailable && "bg-white border-zinc-100 text-zinc-700 active:scale-95",
+                            isManagementMode && "ring-2 ring-amber-500/20"
+                          )}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs border",
+                              isPast ? "bg-zinc-200 border-zinc-300 text-zinc-400" : 
+                              status === 'deactivated' ? "bg-zinc-300 border-zinc-400 text-zinc-600" :
+                              isOccupied && !isPartial ? "bg-red-100 border-red-200 text-red-600" : 
+                              isPartial ? "bg-amber-100 border-amber-200 text-amber-600" :
+                              "bg-emerald-100 border-emerald-200 text-emerald-600"
+                            )}>
+                              {pitch.type}
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-0.5">{pitch.name}</p>
+                              <p className="text-sm font-black uppercase tracking-tight">
+                                {isPast ? 'HORARIO PASADO' : status === 'deactivated' ? 'DESACTIVADO' : isOccupied ? (canSeeDetails ? booking?.clientName : 'RESERVADO') : 'DISPONIBLE'}
+                              </p>
+                            </div>
+                          </div>
+                          {!isPast && isAvailable && !isManagementMode && (
+                            <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                              <Plus className="w-4 h-4" />
+                            </div>
+                          )}
+                          {isManagementMode && <Zap className={cn("w-5 h-5", status === 'deactivated' ? "text-zinc-400" : "text-amber-500")} />}
+                        </button>
+                      );
+                    })
+                  ) : (
+                    days.map(day => {
+                      const targetPitch = filteredPitches[0] || pitches[0];
+                      if (!targetPitch) return null;
+
+                      const status = getSlotStatus(day, hour, targetPitch.id);
+                      const booking = bookings.find(b => 
+                        b.pitchId === targetPitch.id && 
+                        isSameDay(b.startTime, day) && 
+                        b.startTime.getHours() === hour &&
+                        b.status === 'confirmed'
+                      );
+
+                      const isOccupied = status === 'occupied' || status === 'partial';
+                      const isPast = status === 'past';
+                      const isAvailable = status === 'available';
+                      const isPartial = status === 'partial';
+                      const canSeeDetails = user.role === 'admin' || booking?.userId === user.id;
+
+                      return (
+                        <button
+                          key={day.toISOString()}
+                          disabled={isPast}
+                          onClick={() => {
+                            if (isManagementMode) {
+                              const slotKey = `${format(day, 'yyyy-MM-dd')}-${hour}-${targetPitch.id}`;
+                              setDeactivatedSlots(prev => {
+                                const next = new Set(prev);
+                                if (next.has(slotKey)) next.delete(slotKey);
+                                else next.add(slotKey);
+                                return next;
+                              });
+                              return;
+                            }
+                            if (isOccupied) {
+                              if (canSeeDetails && booking) setSelectedBooking(booking);
+                            } else if (!isPast && isAvailable) {
+                              setBookingData({
+                                ...bookingData,
+                                pitch: targetPitch,
+                                date: day,
+                                time: `${hour.toString().padStart(2, '0')}:00`
+                              });
+                              setBookingTimer(300);
+                              setIsBookingModalOpen(true);
+                            }
+                          }}
+                          className={cn(
+                            "w-full p-4 rounded-2xl text-left transition-all flex items-center justify-between border-2",
+                            isPast && "bg-zinc-100 border-zinc-200 text-zinc-400 grayscale opacity-60",
+                            status === 'deactivated' && "bg-zinc-200 border-zinc-300 text-zinc-500 opacity-50",
+                            isOccupied && !isPartial && "bg-red-50 border-red-100 text-red-700",
+                            isPartial && "bg-amber-50 border-amber-100 text-amber-700",
+                            isAvailable && "bg-white border-zinc-100 text-zinc-700 active:scale-95",
+                            isManagementMode && "ring-2 ring-amber-500/20"
+                          )}
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className={cn(
+                              "w-10 h-10 rounded-xl flex items-center justify-center font-black text-xs border",
+                              isPast ? "bg-zinc-200 border-zinc-300 text-zinc-400" : 
+                              status === 'deactivated' ? "bg-zinc-300 border-zinc-400 text-zinc-600" :
+                              isOccupied && !isPartial ? "bg-red-100 border-red-200 text-red-600" : 
+                              isPartial ? "bg-amber-100 border-amber-200 text-amber-600" :
+                              "bg-emerald-100 border-emerald-200 text-emerald-600"
+                            )}>
+                              {format(day, 'EE', { locale: es })}
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-0.5">{format(day, 'd MMM', { locale: es })}</p>
+                              <p className="text-sm font-black uppercase tracking-tight">
+                                {isPast ? 'HORARIO PASADO' : status === 'deactivated' ? 'DESACTIVADO' : isOccupied ? (canSeeDetails ? booking?.clientName : 'RESERVADO') : 'DISPONIBLE'}
+                              </p>
+                            </div>
+                          </div>
+                          {!isPast && isAvailable && !isManagementMode && (
+                            <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                              <Plus className="w-4 h-4" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </Card>
+      </div>
 
       {/* Booking Modal */}
       <Modal
@@ -514,6 +830,14 @@ export default function CalendarPage({ user }: CalendarProps) {
         onClose={() => setIsBookingModalOpen(false)}
         title="Nueva Reserva"
       >
+        {bookingTimer !== null && (
+          <div className="flex items-center justify-center gap-2 bg-red-50 text-red-600 py-3 rounded-2xl border border-red-100 mb-6 animate-pulse">
+            <Timer className="w-5 h-5" />
+            <span className="font-black tracking-widest uppercase text-xs">
+              Tiempo restante: {Math.floor(bookingTimer / 60)}:{(bookingTimer % 60).toString().padStart(2, '0')}
+            </span>
+          </div>
+        )}
         <form onSubmit={handleBookingSubmit} className="space-y-6">
           <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-100 flex items-center gap-4">
             <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-sm border border-zinc-100">
@@ -566,21 +890,21 @@ export default function CalendarPage({ user }: CalendarProps) {
               <label 
                 htmlFor="receipt-upload"
                 className={cn(
-                  "w-full px-6 py-6 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-2 cursor-pointer transition-all",
+                  "w-full px-4 py-4 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center gap-1 cursor-pointer transition-all",
                   bookingData.receipt ? "border-emerald-500 bg-emerald-50" : "border-zinc-200 hover:border-primary/40 hover:bg-primary/5"
                 )}
               >
                 {bookingData.receipt ? (
                   <>
-                    <CheckCircle2 className="w-6 h-6 text-emerald-500" />
-                    <p className="text-xs font-bold text-emerald-600">¡Comprobante Cargado!</p>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                    <p className="text-[10px] font-bold text-emerald-600">¡Comprobante Cargado!</p>
                   </>
                 ) : (
                   <>
-                    <Download className="w-6 h-6 text-zinc-400 group-hover:text-primary transition-colors" />
+                    <Download className="w-5 h-5 text-zinc-400 group-hover:text-primary transition-colors" />
                     <div className="text-center">
-                      <p className="text-xs font-bold text-zinc-900">Subir Comprobante</p>
-                      <p className="text-[10px] text-zinc-500">Imagen o PDF (Máx 2MB)</p>
+                      <p className="text-[10px] font-bold text-zinc-900">Subir Comprobante</p>
+                      <p className="text-[9px] text-zinc-500">Imagen o PDF (Máx 2MB)</p>
                     </div>
                   </>
                 )}
@@ -767,7 +1091,8 @@ export default function CalendarPage({ user }: CalendarProps) {
                     )}
                     onClick={async () => {
                       await api.toggleBookingPayment(selectedBooking.id);
-                      setBookings(dataService.getBookings());
+                      const updatedBookings = await dataService.getBookings();
+                      setBookings(updatedBookings);
                       setSelectedBooking(prev => prev ? { ...prev, isPaid: !prev.isPaid } : null);
                       toast.success(selectedBooking.isPaid ? 'Pago cancelado' : '¡Pago registrado!');
                     }}
@@ -795,7 +1120,8 @@ export default function CalendarPage({ user }: CalendarProps) {
         onConfirm={async () => {
           if (selectedBooking) {
             await api.cancelBooking(selectedBooking.id);
-            setBookings(dataService.getBookings());
+            const updatedBookings = await dataService.getBookings();
+            setBookings(updatedBookings);
             setSelectedBooking(null);
           }
         }}

@@ -47,12 +47,18 @@ export default function BookingsList({ user }: BookingsListProps) {
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
 
   useEffect(() => {
-    setPitches(dataService.getPitches());
-    setBookings(dataService.getBookings());
+    const fetchData = async () => {
+      const p = await dataService.getPitches();
+      const b = await dataService.getBookings();
+      setPitches(p);
+      setBookings(b);
+    };
+    fetchData();
 
     // Auto-refresh every minute to update statuses based on time
-    const interval = setInterval(() => {
-      setBookings(dataService.getBookings());
+    const interval = setInterval(async () => {
+      const b = await dataService.getBookings();
+      setBookings(b);
     }, 60000);
 
     return () => clearInterval(interval);
@@ -90,7 +96,8 @@ export default function BookingsList({ user }: BookingsListProps) {
   const handleStatusUpdate = async (id: string, status: BookingStatus) => {
     try {
       await api.updateBookingStatus(id, status);
-      setBookings(dataService.getBookings());
+      const b = await dataService.getBookings();
+      setBookings(b);
     } catch (error) {
       console.error('Error updating status:', error);
     }
@@ -99,7 +106,8 @@ export default function BookingsList({ user }: BookingsListProps) {
   const handleTogglePayment = async (id: string) => {
     try {
       await api.toggleBookingPayment(id);
-      setBookings(dataService.getBookings());
+      const b = await dataService.getBookings();
+      setBookings(b);
     } catch (error) {
       console.error('Error toggling payment:', error);
     }
@@ -109,7 +117,8 @@ export default function BookingsList({ user }: BookingsListProps) {
     if (!confirmCancel) return;
     try {
       await api.cancelBooking(confirmCancel);
-      setBookings(dataService.getBookings());
+      const b = await dataService.getBookings();
+      setBookings(b);
       setConfirmCancel(null);
     } catch (error) {
       console.error('Error cancelling booking:', error);

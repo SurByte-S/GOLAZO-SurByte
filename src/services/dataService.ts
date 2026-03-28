@@ -1,7 +1,8 @@
 import { Pitch, Booking, Product, Sale, User, AuditLog, BookingStatus } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
+import { supabaseService } from './supabaseService';
 
-// Initial Mock Data
+// Initial Mock Data (Fallback)
 const MOCK_PITCHES: Pitch[] = [
   { id: 'p1', name: 'Cancha 1', type: 'F5', price: 1500, active: true },
   { id: 'p2', name: 'Cancha 2', type: 'F5', price: 1500, active: true },
@@ -9,10 +10,10 @@ const MOCK_PITCHES: Pitch[] = [
 ];
 
 const MOCK_PRODUCTS: Product[] = [
-  { id: 'pr1', name: 'Agua Mineral 500ml', price: 200, category: 'bebida' },
-  { id: 'pr2', name: 'Gatorade 500ml', price: 350, category: 'bebida' },
-  { id: 'pr3', name: 'Coca Cola 500ml', price: 300, category: 'bebida' },
-  { id: 'pr4', name: 'Cerveza 1L', price: 800, category: 'bebida' },
+  { id: 'pr1', name: 'Agua Mineral 500ml', price: 200, category: 'bebida', stock: 50, min_stock: 10, active: true },
+  { id: 'pr2', name: 'Gatorade 500ml', price: 350, category: 'bebida', stock: 30, min_stock: 5, active: true },
+  { id: 'pr3', name: 'Coca Cola 500ml', price: 300, category: 'bebida', stock: 40, min_stock: 10, active: true },
+  { id: 'pr4', name: 'Cerveza 1L', price: 800, category: 'bebida', stock: 20, min_stock: 5, active: true },
 ];
 
 const MOCK_BOOKINGS: Booking[] = [
@@ -81,13 +82,53 @@ const setStorage = <T>(key: string, data: T) => {
   localStorage.setItem(key, JSON.stringify(data));
 };
 
+const isSupabaseConfigured = () => {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const configured = !!url && !!key && url !== "" && key !== "";
+  if (!configured) {
+    // Only log once to avoid spam
+    if (!(window as any)._supabaseWarned) {
+      console.warn('[DataService] Supabase not configured. Using LocalStorage fallback.');
+      (window as any)._supabaseWarned = true;
+    }
+  }
+  return configured;
+};
+
 export const dataService = {
+  isSupabaseConfigured,
+  checkConnection: async () => {
+    if (!isSupabaseConfigured()) return false;
+    return await supabaseService.testConnection();
+  },
   // Pitches
-  getPitches: () => getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES),
-  savePitches: (pitches: Pitch[]) => setStorage('golazo_pitches', pitches),
+  getPitches: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.getPitches();
+      } catch (error) {
+        console.error('Error fetching pitches from Supabase:', error);
+      }
+    }
+    return getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES);
+  },
+  savePitches: async (pitches: Pitch[]) => {
+    if (isSupabaseConfigured()) {
+      // Typically handled by individual add/update/delete calls in Supabase
+    }
+    setStorage('golazo_pitches', pitches);
+  },
   
   // Bookings
-  getBookings: () => {
+  getBookings: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.getBookings();
+      } catch (error) {
+        console.error('Error fetching bookings from Supabase:', error);
+      }
+    }
     const bookings = getStorage<Booking[]>('golazo_bookings', MOCK_BOOKINGS);
     const now = new Date();
     let hasChanges = false;
@@ -106,17 +147,35 @@ export const dataService = {
 
     return updatedBookings;
   },
-  saveBookings: (bookings: Booking[]) => setStorage('golazo_bookings', bookings),
+  saveBookings: async (bookings: Booking[]) => setStorage('golazo_bookings', bookings),
   
   // Products
-  getProducts: () => getStorage<Product[]>('golazo_products', MOCK_PRODUCTS),
-  saveProducts: (products: Product[]) => setStorage('golazo_products', products),
+  getProducts: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.getProducts();
+      } catch (error) {
+        console.error('Error fetching products from Supabase:', error);
+      }
+    }
+    return getStorage<Product[]>('golazo_products', MOCK_PRODUCTS);
+  },
+  saveProducts: async (products: Product[]) => setStorage('golazo_products', products),
   
   // Sales
-  getSales: () => getStorage<Sale[]>('golazo_sales', []),
-  saveSales: (sales: Sale[]) => setStorage('golazo_sales', sales),
+  getSales: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.getSales();
+      } catch (error) {
+        console.error('Error fetching sales from Supabase:', error);
+      }
+    }
+    return getStorage<Sale[]>('golazo_sales', []);
+  },
+  saveSales: async (sales: Sale[]) => setStorage('golazo_sales', sales),
 
-  // Auth Simulation
+  // Auth Simulation (Supabase Auth can be integrated later)
   getCurrentUser: () => {
     const user = localStorage.getItem('golazo_user');
     if (!user) return null;
@@ -126,25 +185,73 @@ export const dataService = {
       return null;
     }
   },
-  login: (email: string) => {
-    const role = email === 'admin@gmail.com' ? 'admin' : 'client';
-    const name = email === 'admin@gmail.com' ? 'Administrador' : (email === 'cliente@gmail.com' ? 'Cliente VIP' : email.split('@')[0]);
-    const user: User = { 
-      id: email, // Use email as ID for simplicity in points tracking
-      email, 
-      name, 
-      role 
+  login: async (identifier: string, password?: string) => {
+    // Super Admin check
+    if (identifier === 'superman@gmail.com') {
+      const user: User = {
+        id: identifier,
+        email: identifier,
+        name: 'Super Admin Golazo',
+        role: 'superadmin'
+      };
+      localStorage.setItem('golazo_user', JSON.stringify(user));
+      dataService.trackOnlineUser(user);
+      return user;
+    }
+
+    // Admin check
+    if (identifier === 'admin@gmail.com') {
+      if (password !== 'admin123') {
+        throw new Error('Contraseña de administrador incorrecta');
+      }
+      const user: User = { 
+        id: identifier,
+        email: identifier,
+        name: 'Administrador',
+        role: 'admin' 
+      };
+      localStorage.setItem('golazo_user', JSON.stringify(user));
+      dataService.trackOnlineUser(user);
+      return user;
+    }
+
+    // Client check (Email or Phone)
+    const isEmail = identifier.includes('@');
+    const user: User = {
+      id: identifier,
+      email: isEmail ? identifier : undefined,
+      phone: !isEmail ? identifier : undefined,
+      name: identifier.split('@')[0],
+      role: 'client'
     };
     localStorage.setItem('golazo_user', JSON.stringify(user));
+    dataService.trackOnlineUser(user);
     return user;
   },
   logout: () => {
+    const user = dataService.getCurrentUser();
+    if (user) {
+      dataService.untrackOnlineUser(user.id);
+    }
     localStorage.removeItem('golazo_user');
   },
 
+  // Online Users Tracking (Simulation)
+  getOnlineUsers: () => getStorage<User[]>('golazo_online_users', []),
+  trackOnlineUser: (user: User) => {
+    const online = dataService.getOnlineUsers();
+    if (!online.find(u => u.id === user.id)) {
+      setStorage('golazo_online_users', [...online, user]);
+    }
+  },
+  untrackOnlineUser: (userId: string) => {
+    const online = dataService.getOnlineUsers();
+    setStorage('golazo_online_users', online.filter(u => u.id !== userId));
+  },
+
   // Loyalty & Ranking
-  getUserPoints: (userId: string) => {
-    const bookings = dataService.getBookings();
+  getUserPoints: async (userId: string) => {
+    const bookings = await dataService.getBookings();
     // 1 point per confirmed booking, 1.5 for promotional hours (10-16)
     return bookings
       .filter(b => b.userId === userId && (b.status === 'confirmed' || b.status === 'finished'))
@@ -155,8 +262,8 @@ export const dataService = {
       }, 0);
   },
 
-  getRanking: () => {
-    const bookings = dataService.getBookings();
+  getRanking: async () => {
+    const bookings = await dataService.getBookings();
     const confirmedBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'finished');
     
     const userStats: Record<string, { id: string, name: string, points: number }> = {};
@@ -178,11 +285,27 @@ export const dataService = {
   },
 
   // Audit Logs
-  getAuditLogs: () => getStorage<AuditLog[]>('golazo_audit_logs', []),
-  saveAuditLogs: (logs: AuditLog[]) => setStorage('golazo_audit_logs', logs),
-  logAction: (action: string, details: string) => {
-    const logs = dataService.getAuditLogs();
+  getAuditLogs: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.getAuditLogs();
+      } catch (error) {
+        console.error('Error fetching audit logs from Supabase:', error);
+      }
+    }
+    return getStorage<AuditLog[]>('golazo_audit_logs', []);
+  },
+  saveAuditLogs: async (logs: AuditLog[]) => setStorage('golazo_audit_logs', logs),
+  logAction: async (action: string, details: string) => {
     const user = dataService.getCurrentUser();
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseService.logAction(action, details, user?.name);
+      } catch (error) {
+        console.error('Error logging action to Supabase:', error);
+      }
+    }
+    const logs = await dataService.getAuditLogs();
     const newLog: AuditLog = {
       id: Math.random().toString(36).substr(2, 9),
       action,
@@ -191,6 +314,28 @@ export const dataService = {
       user: user?.name || 'Sistema'
     };
     dataService.saveAuditLogs([newLog, ...logs].slice(0, 100)); // Keep last 100
+  },
+
+  // Deactivated Slots
+  getDeactivatedSlots: async () => {
+    if (isSupabaseConfigured()) {
+      try {
+        const slots = await supabaseService.getDeactivatedSlots();
+        return new Set(slots.map(s => `${s.slot_date}-${s.slot_hour}-${s.pitch_id}`));
+      } catch (error) {
+        console.error('Error fetching deactivated slots from Supabase:', error);
+      }
+    }
+    return new Set<string>();
+  },
+  toggleDeactivatedSlot: async (pitchId: string, date: string, hour: number) => {
+    if (isSupabaseConfigured()) {
+      try {
+        await supabaseService.toggleDeactivatedSlot(pitchId, date, hour);
+      } catch (error) {
+        console.error('Error toggling deactivated slot in Supabase:', error);
+      }
+    }
   }
 };
 
@@ -198,7 +343,15 @@ export const dataService = {
 export const api = {
   // Bookings
   addBooking: async (booking: Omit<Booking, 'id' | 'createdAt'>) => {
-    const bookings = dataService.getBookings();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.addBooking(booking);
+      } catch (error) {
+        console.error('Error adding booking to Supabase:', error);
+        throw error;
+      }
+    }
+    const bookings = await dataService.getBookings();
     
     // Overlap check
     const hasOverlap = bookings.some(existing => {
@@ -223,38 +376,96 @@ export const api = {
   },
 
   cancelBooking: async (id: string) => {
-    const bookings = dataService.getBookings();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.cancelBooking(id);
+      } catch (error) {
+        console.error('Error cancelling booking in Supabase:', error);
+      }
+    }
+    const bookings = await dataService.getBookings();
     const updated = bookings.map(b => b.id === id ? { ...b, status: 'cancelled' as const } : b);
     dataService.saveBookings(updated);
   },
 
   updateBookingStatus: async (id: string, status: BookingStatus) => {
-    const bookings = dataService.getBookings();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.updateBookingStatus(id, status);
+      } catch (error) {
+        console.error('Error updating booking status in Supabase:', error);
+      }
+    }
+    const bookings = await dataService.getBookings();
     const updated = bookings.map(b => b.id === id ? { ...b, status } : b);
     dataService.saveBookings(updated);
     dataService.logAction('Estado de Reserva Actualizado', `Reserva ${id} cambiada a ${status}`);
   },
 
   toggleBookingPayment: async (id: string) => {
-    const bookings = dataService.getBookings();
+    const bookings = await dataService.getBookings();
+    const booking = bookings.find(b => b.id === id);
+    if (!booking) return;
+
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.toggleBookingPayment(id, !booking.isPaid);
+      } catch (error) {
+        console.error('Error toggling booking payment in Supabase:', error);
+      }
+    }
     const updated = bookings.map(b => b.id === id ? { ...b, isPaid: !b.isPaid } : b);
     dataService.saveBookings(updated);
     dataService.logAction('Pago de Reserva Actualizado', `Estado de pago de reserva ${id} cambiado`);
   },
 
   // Sales
-  addSale: async (productId: string, quantity: number) => {
-    const products = dataService.getProducts();
+  addSale: async (productId: string, quantity: number, paymentMethod?: 'efectivo' | 'transferencia') => {
+    const products = await dataService.getProducts();
     const product = products.find(p => p.id === productId);
     if (!product) throw new Error('Producto no encontrado');
 
-    const sales = dataService.getSales();
+    if (product.stock < quantity) {
+      throw new Error('Stock insuficiente');
+    }
+
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.addSale({
+          productId,
+          quantity,
+          totalPrice: product.price * quantity,
+          date: new Date(),
+          paymentMethod
+        });
+      } catch (error) {
+        console.error('Error adding sale to Supabase:', error);
+        throw error; // Let the UI handle the error
+      }
+    }
+
+    // Deduct stock locally
+    const updatedProducts = products.map(p => 
+      p.id === productId ? { ...p, stock: p.stock - quantity } : p
+    );
+    await dataService.saveProducts(updatedProducts);
+
+    const sales = await dataService.getSales();
+    const saleId = Math.random().toString(36).substr(2, 9);
     const newSale: Sale = {
-      id: Math.random().toString(36).substr(2, 9),
+      id: saleId,
       productId,
       quantity,
       totalPrice: product.price * quantity,
       date: new Date(),
+      paymentMethod,
+      items: [{
+        id: Math.random().toString(36).substr(2, 9),
+        saleId,
+        productId,
+        quantity,
+        price: product.price
+      }]
     };
     
     dataService.saveSales([...sales, newSale]);
@@ -262,15 +473,39 @@ export const api = {
   },
 
   deleteSale: async (id: string) => {
-    const sales = dataService.getSales();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.deleteSale(id);
+      } catch (error) {
+        console.error('Error deleting sale from Supabase:', error);
+      }
+    }
+    const sales = await dataService.getSales();
     const sale = sales.find(s => s.id === id);
+    
+    if (sale) {
+      // Restore stock locally
+      const products = await dataService.getProducts();
+      const updatedProducts = products.map(p => 
+        p.id === sale.productId ? { ...p, stock: p.stock + sale.quantity } : p
+      );
+      await dataService.saveProducts(updatedProducts);
+    }
+
     dataService.saveSales(sales.filter(s => s.id !== id));
     dataService.logAction('Venta Eliminada', `Se eliminó la venta de ${sale?.productId || id}`);
   },
 
   // Products CRUD
   addProduct: async (product: Omit<Product, 'id'>) => {
-    const products = dataService.getProducts();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.addProduct(product);
+      } catch (error) {
+        console.error('Error adding product to Supabase:', error);
+      }
+    }
+    const products = await dataService.getProducts();
     const newProduct = { ...product, id: Math.random().toString(36).substr(2, 9) };
     dataService.saveProducts([...products, newProduct]);
     dataService.logAction('Producto Creado', `Se creó el producto ${product.name}`);
@@ -278,7 +513,14 @@ export const api = {
   },
 
   updateProduct: async (id: string, updates: Partial<Product>) => {
-    const products = dataService.getProducts();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.updateProduct(id, updates);
+      } catch (error) {
+        console.error('Error updating product in Supabase:', error);
+      }
+    }
+    const products = await dataService.getProducts();
     const product = products.find(p => p.id === id);
     const updated = products.map(p => p.id === id ? { ...p, ...updates } : p);
     dataService.saveProducts(updated);
@@ -286,15 +528,52 @@ export const api = {
   },
 
   deleteProduct: async (id: string) => {
-    const products = dataService.getProducts();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.deleteProduct(id);
+      } catch (error) {
+        console.error('Error deleting product from Supabase:', error);
+      }
+    }
+    const products = await dataService.getProducts();
     const product = products.find(p => p.id === id);
     dataService.saveProducts(products.filter(p => p.id !== id));
     dataService.logAction('Producto Eliminado', `Se eliminó el producto ${product?.name || id}`);
   },
 
+  bulkUpdateStock: async (updates: { productId: string; quantityToAdd: number; newStock: number }[]) => {
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.bulkUpdateStock(updates);
+      } catch (error) {
+        console.error('Error in bulk stock update in Supabase:', error);
+        throw error;
+      }
+    }
+    
+    const products = await dataService.getProducts();
+    const updatedProducts = products.map(p => {
+      const update = updates.find(u => u.productId === p.id);
+      if (update) {
+        return { ...p, stock: update.newStock };
+      }
+      return p;
+    });
+    
+    await dataService.saveProducts(updatedProducts);
+    dataService.logAction('Stock Actualizado', `Se actualizó el stock de ${updates.length} productos`);
+  },
+
   // Pitches CRUD
   addPitch: async (pitch: Omit<Pitch, 'id'>) => {
-    const pitches = dataService.getPitches();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.addPitch(pitch);
+      } catch (error) {
+        console.error('Error adding pitch to Supabase:', error);
+      }
+    }
+    const pitches = await dataService.getPitches();
     const newPitch = { ...pitch, id: Math.random().toString(36).substr(2, 9) };
     dataService.savePitches([...pitches, newPitch]);
     dataService.logAction('Cancha Creada', `Se creó la cancha ${pitch.name}`);
@@ -302,7 +581,14 @@ export const api = {
   },
 
   updatePitch: async (id: string, updates: Partial<Pitch>) => {
-    const pitches = dataService.getPitches();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.updatePitch(id, updates);
+      } catch (error) {
+        console.error('Error updating pitch in Supabase:', error);
+      }
+    }
+    const pitches = await dataService.getPitches();
     const pitch = pitches.find(p => p.id === id);
     const updated = pitches.map(p => p.id === id ? { ...p, ...updates } : p);
     dataService.savePitches(updated);
@@ -310,7 +596,14 @@ export const api = {
   },
 
   deletePitch: async (id: string) => {
-    const pitches = dataService.getPitches();
+    if (isSupabaseConfigured()) {
+      try {
+        return await supabaseService.deletePitch(id);
+      } catch (error) {
+        console.error('Error deleting pitch from Supabase:', error);
+      }
+    }
+    const pitches = await dataService.getPitches();
     const pitch = pitches.find(p => p.id === id);
     dataService.savePitches(pitches.filter(p => p.id !== id));
     dataService.logAction('Cancha Eliminada', `Se eliminó la cancha ${pitch?.name || id}`);

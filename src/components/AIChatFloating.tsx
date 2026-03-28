@@ -16,8 +16,6 @@ import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { dataService, api } from '../services/dataService';
 import { cn } from '../lib/utils';
 
-import ArgentinaCountdown from './ArgentinaCountdown';
-
 interface Message {
   role: 'user' | 'bot';
   text: string;
@@ -111,9 +109,12 @@ export default function AIChatFloating() {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
       
-      const pitches = dataService.getPitches();
-      const products = dataService.getProducts();
-      const bookings = dataService.getBookings();
+      const [pitches, products, bookingsRaw] = await Promise.all([
+        dataService.getPitches(),
+        dataService.getProducts(),
+        dataService.getBookings()
+      ]);
+      const bookings = bookingsRaw;
 
       const systemInstruction = `
         Eres "LIO", un asistente experto y muy argentino para dueños de complejos de fútbol 5.
@@ -169,8 +170,8 @@ export default function AIChatFloating() {
             setChatMessages(prev => [...prev, { role: 'bot', text: `He actualizado el precio del producto ${productId} a $${newPrice} correctamente.` }]);
           } else if (call.name === "cancelBooking") {
             const { pitchId, date, hour } = call.args as { pitchId: string, date: string, hour: number };
-            const bookings = dataService.getBookings();
-            const bookingToCancel = bookings.find(b => 
+            const currentBookings = await dataService.getBookings();
+            const bookingToCancel = currentBookings.find(b => 
               b.pitchId === pitchId && 
               b.status === 'confirmed' &&
               b.startTime.toISOString().startsWith(date) &&
@@ -199,17 +200,6 @@ export default function AIChatFloating() {
 
   return (
     <>
-      {/* Argentina Countdown Floating */}
-      {!isOpen && (
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed bottom-32 right-8 z-40"
-        >
-          <ArgentinaCountdown variant="floating" />
-        </motion.div>
-      )}
-
       {/* Floating Button (The "Gauchito Mascot") */}
       <motion.button
         whileHover={{ scale: 1.1 }}
@@ -277,93 +267,108 @@ export default function AIChatFloating() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-28 right-4 md:right-8 w-[calc(100vw-2rem)] md:w-[400px] h-[calc(100vh-12rem)] md:h-[600px] max-h-[700px] bg-white rounded-[32px] shadow-2xl z-50 overflow-hidden border border-zinc-200 flex flex-col"
+            className="fixed bottom-0 right-0 w-full h-[100dvh] sm:bottom-28 sm:right-8 sm:w-[400px] sm:h-[600px] sm:max-h-[700px] bg-white sm:rounded-[32px] shadow-2xl z-[60] overflow-hidden border-t sm:border border-zinc-200 flex flex-col"
           >
-            {/* Header */}
-            <div className="p-6 bg-gradient-to-r from-sky-500 via-white to-sky-500 text-zinc-900 flex items-center justify-between">
+            {/* Header - SaaS Premium Style */}
+            <div className="px-6 py-5 bg-white border-b border-zinc-100 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-zinc-100 rounded-xl flex items-center justify-center shadow-lg">
-                  <User className="w-6 h-6 text-sky-400" />
+                <div className="relative">
+                  <div className="w-10 h-10 bg-sky-50 rounded-xl flex items-center justify-center border border-sky-100">
+                    <User className="w-6 h-6 text-sky-500" />
+                  </div>
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full" />
                 </div>
                 <div>
-                  <h3 className="font-black text-sm tracking-tight">LIO</h3>
-                  <p className="text-[10px] font-bold text-sky-700 uppercase tracking-widest">En la cancha...</p>
+                  <h3 className="font-bold text-zinc-900 text-sm leading-none">LIO</h3>
+                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest mt-1">En línea ahora</p>
                 </div>
               </div>
               <button 
                 onClick={() => setIsOpen(false)}
-                className="p-2 hover:bg-sky-100 rounded-xl transition-colors text-sky-900"
+                className="p-2 hover:bg-zinc-50 rounded-xl transition-colors text-zinc-400 hover:text-zinc-600"
               >
-                <ChevronDown className="w-5 h-5" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-hide">
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-zinc-50/30 scroll-smooth">
               {chatMessages.map((msg, i) => (
                 <motion.div
                   key={i}
-                  initial={{ opacity: 0, x: msg.role === 'user' ? 20 : -20 }}
-                  animate={{ opacity: 1, x: 0 }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
                   className={cn(
-                    "max-w-[85%] p-4 rounded-2xl text-sm font-medium leading-relaxed shadow-sm",
-                    msg.role === 'user' 
-                      ? "bg-sky-500 text-white ml-auto rounded-tr-none" 
-                      : "bg-zinc-100 text-zinc-900 mr-auto rounded-tl-none border-l-4 border-sky-400"
+                    "flex flex-col max-w-[80%]",
+                    msg.role === 'user' ? "ml-auto items-end" : "mr-auto items-start"
                   )}
                 >
-                  {msg.text}
+                  <div className={cn(
+                    "px-4 py-3 text-sm font-medium leading-relaxed shadow-sm",
+                    msg.role === 'user' 
+                      ? "bg-sky-600 text-white rounded-2xl rounded-tr-none" 
+                      : "bg-white text-zinc-700 rounded-2xl rounded-tl-none border border-zinc-100"
+                  )}>
+                    {msg.text}
+                  </div>
+                  <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-tighter mt-1.5 px-1">
+                    {msg.role === 'user' ? 'Tú' : 'Lio'} • {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
                 </motion.div>
               ))}
+              
               {isTyping && (
-                <div className="bg-zinc-100 text-zinc-500 p-4 rounded-2xl rounded-tl-none mr-auto flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce" />
-                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.2s]" />
-                  <span className="w-1.5 h-1.5 bg-zinc-500 rounded-full animate-bounce [animation-delay:0.4s]" />
+                <div className="flex flex-col items-start max-w-[80%] mr-auto">
+                  <div className="bg-white border border-zinc-100 px-4 py-3 rounded-2xl rounded-tl-none flex gap-1.5 shadow-sm">
+                    <span className="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce" />
+                    <span className="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce [animation-delay:0.2s]" />
+                    <span className="w-1.5 h-1.5 bg-sky-400 rounded-full animate-bounce [animation-delay:0.4s]" />
+                  </div>
                 </div>
               )}
               <div ref={chatEndRef} />
             </div>
 
-            {/* Input */}
-            <div className="p-6 border-t border-zinc-200 bg-zinc-50/50">
-              <form onSubmit={handleSendMessage} className="relative">
-                <input 
-                  type="text"
-                  placeholder="Escribe tu mensaje..."
-                  className="w-full bg-white border border-zinc-200 rounded-2xl py-4 pl-6 pr-14 text-sm font-medium focus:ring-2 focus:ring-sky-500 outline-none transition-all shadow-sm text-zinc-900"
-                  value={chatInput}
-                  onChange={e => setChatInput(e.target.value)}
-                />
-                <button 
-                  type="submit"
-                  disabled={!chatInput.trim() || isTyping}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-500/20 hover:bg-sky-400 transition-colors disabled:opacity-50"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-              
-              <div className="mt-4 flex flex-wrap gap-2">
-                <button 
-                  onClick={() => setChatInput("Cambia el precio de la Cancha 1 a $1800")}
-                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
-                >
-                  Cambiar Precios
-                </button>
-                <button 
-                  onClick={() => setChatInput("¿Cómo van las ventas?")}
-                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
-                >
-                  Estadísticas
-                </button>
-                <button 
-                  onClick={() => setChatInput("Cancela el turno de la Cancha 1 para hoy a las 20hs")}
-                  className="text-[10px] font-black text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-1.5 rounded-full hover:bg-zinc-100 transition-all"
-                >
-                  Cancelar Turnos
-                </button>
+            {/* Input Area */}
+            <div className="p-4 bg-white border-t border-zinc-100">
+              {/* Quick Actions - Minimal Pills */}
+              <div className="mb-4 flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {[
+                  { label: "Precios", text: "Cambia el precio de la Cancha 1 a $1800" },
+                  { label: "Ventas", text: "¿Cómo van las ventas?" },
+                  { label: "Cancelar", text: "Cancela el turno de la Cancha 1 para hoy a las 20hs" }
+                ].map((action, idx) => (
+                  <button 
+                    key={idx}
+                    onClick={() => setChatInput(action.text)}
+                    className="whitespace-nowrap text-[10px] font-bold text-zinc-500 uppercase tracking-widest border border-zinc-200 px-3 py-2 rounded-full hover:bg-sky-50 hover:border-sky-200 hover:text-sky-600 transition-all"
+                  >
+                    {action.label}
+                  </button>
+                ))}
               </div>
+
+              <form onSubmit={handleSendMessage} className="relative flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input 
+                    type="text"
+                    placeholder="Escribe tu mensaje..."
+                    className="w-full bg-zinc-50 border border-zinc-200 rounded-2xl py-3.5 pl-5 pr-12 text-sm font-medium focus:ring-2 focus:ring-sky-500/20 focus:border-sky-500 outline-none transition-all text-zinc-900 placeholder:text-zinc-400"
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                  />
+                  <button 
+                    type="submit"
+                    disabled={!chatInput.trim() || isTyping}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 bg-sky-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-sky-600/20 hover:bg-sky-500 transition-all disabled:opacity-50 disabled:grayscale"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </form>
+              <p className="text-[9px] text-center text-zinc-400 font-medium mt-3 uppercase tracking-widest">
+                Desarrollado por Golazo AI
+              </p>
             </div>
           </motion.div>
         )}

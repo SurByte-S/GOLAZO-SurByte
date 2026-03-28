@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
+import { toast } from 'sonner';
 import { dataService, api } from '../services/dataService';
 import { Product, Sale } from '../types';
 import { cn } from '../lib/utils';
@@ -32,14 +33,20 @@ export default function SalesPage() {
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [quantity, setQuantity] = useState(1);
+  const [paymentMethod, setPaymentMethod] = useState<'efectivo' | 'transferencia'>('efectivo');
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmDeleteSale, setConfirmDeleteSale] = useState<string | null>(null);
   const user = dataService.getCurrentUser();
   const isAdmin = user?.role === 'admin';
 
   useEffect(() => {
-    setProducts(dataService.getProducts());
-    setSales(dataService.getSales());
+    const fetchData = async () => {
+      const p = await dataService.getProducts();
+      const s = await dataService.getSales();
+      setProducts(p);
+      setSales(s);
+    };
+    fetchData();
   }, []);
 
   const filteredProducts = products.filter(p => 
@@ -51,14 +58,18 @@ export default function SalesPage() {
     if (!selectedProduct) return;
 
     try {
-      await api.addSale(selectedProduct.id, quantity);
-      setSales(dataService.getSales());
+      await api.addSale(selectedProduct.id, quantity, paymentMethod);
+      const updatedSales = await dataService.getSales();
+      const updatedProducts = await dataService.getProducts();
+      setSales(updatedSales);
+      setProducts(updatedProducts);
       setIsSaleModalOpen(false);
       setQuantity(1);
+      setPaymentMethod('efectivo');
       setSuccessMessage(`¡Venta de ${selectedProduct.name} registrada!`);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (error: any) {
-      alert(error.message);
+      toast.error(error.message);
     }
   };
 
@@ -69,7 +80,10 @@ export default function SalesPage() {
   const executeDeleteSale = async () => {
     if (!confirmDeleteSale) return;
     await api.deleteSale(confirmDeleteSale);
-    setSales(dataService.getSales());
+    const updatedSales = await dataService.getSales();
+    const updatedProducts = await dataService.getProducts();
+    setSales(updatedSales);
+    setProducts(updatedProducts);
     setConfirmDeleteSale(null);
   };
 
@@ -90,19 +104,19 @@ export default function SalesPage() {
   };
 
   return (
-    <div className="space-y-8 pb-20">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-6 sm:space-y-8 pb-20">
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">Ventas & Bar</h1>
-          <p className="text-zinc-500 font-medium">Gestión de productos y consumos</p>
+          <h1 className="text-3xl sm:text-4xl font-black text-zinc-900 tracking-tighter">Ventas & Bar</h1>
+          <p className="text-zinc-500 font-medium text-sm sm:text-base">Gestión de productos y consumos</p>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="relative flex-1 md:w-64">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+        <div className="flex items-center gap-4 w-full lg:w-auto">
+          <div className="relative flex-1 lg:w-64">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-zinc-400" />
             <input
               type="text"
               placeholder="Buscar producto..."
-              className="w-full pl-12 pr-4 py-3 bg-white border border-zinc-100 rounded-2xl shadow-sm focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900"
+              className="w-full pl-11 sm:pl-12 pr-4 py-2.5 sm:py-3 bg-white border border-zinc-100 rounded-2xl shadow-sm focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 text-sm"
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
             />
@@ -165,15 +179,29 @@ export default function SalesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {filteredProducts.map((product) => {
               const Icon = getCategoryIcon(product.category);
+              const isOutOfStock = product.stock <= 0;
+              const isLowStock = product.stock > 0 && product.stock <= product.min_stock;
+
               return (
-                <motion.div key={product.id} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <motion.div key={product.id} whileHover={!isOutOfStock ? { scale: 1.02 } : {}} whileTap={!isOutOfStock ? { scale: 0.98 } : {}}>
                   <Card 
-                    className="border-none shadow-sm hover:shadow-xl transition-all cursor-pointer group bg-white"
+                    className={cn(
+                      "border-none shadow-sm transition-all bg-white relative overflow-hidden",
+                      isOutOfStock ? "opacity-60 cursor-not-allowed" : "hover:shadow-xl cursor-pointer group",
+                      isLowStock ? "ring-2 ring-yellow-400" : ""
+                    )}
                     onClick={() => {
+                      if (isOutOfStock) return;
                       setSelectedProduct(product);
+                      setQuantity(1);
                       setIsSaleModalOpen(true);
                     }}
                   >
+                    {isOutOfStock && (
+                      <div className="absolute inset-0 bg-red-500/10 z-10 flex items-center justify-center backdrop-blur-[1px]">
+                        <Badge variant="danger" className="font-black tracking-widest uppercase">Sin Stock</Badge>
+                      </div>
+                    )}
                     <CardContent className="p-6 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div className="w-14 h-14 bg-zinc-50 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:bg-sky-50 group-hover:text-sky-500 transition-colors">
@@ -181,10 +209,18 @@ export default function SalesPage() {
                         </div>
                         <div>
                           <h4 className="font-black text-zinc-900 group-hover:text-sky-600 transition-colors">{product.name}</h4>
-                          <p className="text-lg font-black text-zinc-400">${product.price}</p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <p className="text-lg font-black text-zinc-400">${product.price}</p>
+                            <Badge variant={isLowStock ? "warning" : "neutral"} className={cn("text-[10px] font-bold uppercase", isLowStock ? "bg-yellow-100 text-yellow-700" : "")}>
+                              Stock: {product.stock}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
-                      <div className="w-10 h-10 bg-zinc-50 rounded-full flex items-center justify-center text-zinc-300 group-hover:bg-sky-500 group-hover:text-white transition-all">
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center transition-all",
+                        isOutOfStock ? "bg-zinc-100 text-zinc-300" : "bg-zinc-50 text-zinc-300 group-hover:bg-sky-500 group-hover:text-white"
+                      )}>
                         <Plus className="w-5 h-5" />
                       </div>
                     </CardContent>
@@ -220,9 +256,16 @@ export default function SalesPage() {
                           </div>
                           <div>
                             <p className="text-sm font-black text-zinc-900">{product?.name}</p>
-                            <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
-                              {format(sale.date, 'HH:mm')} hs
-                            </p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">
+                                {format(sale.date, 'HH:mm')} hs
+                              </p>
+                              {sale.paymentMethod && (
+                                <Badge variant="neutral" className="text-[8px] px-1.5 py-0 uppercase">
+                                  {sale.paymentMethod}
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">
@@ -280,17 +323,67 @@ export default function SalesPage() {
                 >
                   -
                 </Button>
-                <div className="flex-1 h-14 bg-zinc-50 rounded-2xl flex items-center justify-center text-2xl font-black text-zinc-900 border border-zinc-200">
-                  {quantity}
+                <div className="flex-1 h-14 bg-zinc-50 rounded-2xl flex items-center justify-center text-2xl font-black text-zinc-900 border border-zinc-200 overflow-hidden">
+                  <input
+                    type="number"
+                    min="1"
+                    max={selectedProduct?.stock || 1}
+                    value={quantity}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      if (!isNaN(val)) {
+                        setQuantity(Math.min(selectedProduct?.stock || 1, Math.max(1, val)));
+                      }
+                    }}
+                    className="w-full h-full text-center bg-transparent outline-none"
+                  />
                 </div>
                 <Button 
                   type="button" 
                   variant="outline" 
                   className="w-14 h-14 rounded-2xl text-2xl font-black"
-                  onClick={() => setQuantity(quantity + 1)}
+                  onClick={() => setQuantity(Math.min(selectedProduct?.stock || 1, quantity + 1))}
+                  disabled={quantity >= (selectedProduct?.stock || 1)}
                 >
                   +
                 </Button>
+              </div>
+              <p className="text-xs text-zinc-500 font-medium text-right mt-1">
+                Stock disponible: {selectedProduct?.stock}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <label className="text-sm font-bold text-zinc-700 ml-1">Método de Pago</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('efectivo')}
+                  className={cn(
+                    "h-14 rounded-2xl border-2 font-black transition-all flex items-center justify-center gap-2",
+                    paymentMethod === 'efectivo' 
+                      ? "border-sky-500 bg-sky-50 text-sky-700" 
+                      : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300"
+                  )}
+                >
+                  <DollarSign className="w-5 h-5" />
+                  Efectivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('transferencia')}
+                  className={cn(
+                    "h-14 rounded-2xl border-2 font-black transition-all flex items-center justify-center gap-2",
+                    paymentMethod === 'transferencia' 
+                      ? "border-sky-500 bg-sky-50 text-sky-700" 
+                      : "border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300"
+                  )}
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                  </svg>
+                  Transferencia
+                </button>
               </div>
             </div>
 

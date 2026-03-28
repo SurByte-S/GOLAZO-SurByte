@@ -302,28 +302,28 @@ export default function StatsPage() {
   const COLORS = ['#0ea5e9', '#3b82f6', '#a855f7', '#f59e0b'];
 
   return (
-    <div className="space-y-8 pb-20">
-      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+    <div className="space-y-6 sm:space-y-8 pb-20">
+      <header className="flex flex-col xl:flex-row xl:items-center justify-between gap-6">
         <div>
-          <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">Estadísticas Avanzadas</h1>
-          <p className="text-zinc-500 font-medium">Panel inteligente de gestión y decisiones</p>
+          <h1 className="text-3xl sm:text-4xl font-black text-zinc-900 tracking-tighter">Estadísticas Avanzadas</h1>
+          <p className="text-zinc-500 font-medium text-sm sm:text-base">Panel inteligente de gestión y decisiones</p>
         </div>
 
-        <div className="flex flex-col md:flex-row items-end md:items-center gap-4">
-          <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4">
+          <div className="flex bg-white p-1 rounded-2xl border border-zinc-100 shadow-sm overflow-x-auto">
             {(['week', 'month', 'year'] as const).map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range)}
                 className={cn(
-                  "px-6 py-2.5 rounded-xl text-sm font-black transition-all uppercase tracking-widest flex items-center gap-2",
+                  "flex-1 sm:flex-none px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl text-[10px] sm:text-sm font-black transition-all uppercase tracking-widest flex items-center justify-center gap-1 sm:gap-2",
                   timeRange === range 
                     ? "bg-argentina text-zinc-900 shadow-lg shadow-sky-500/20" 
                     : "text-zinc-400 hover:text-zinc-900"
                 )}
               >
                 {timeRange === range && (
-                  <div className="w-4 h-3 rounded-[2px] overflow-hidden flex flex-col shadow-sm shrink-0">
+                  <div className="w-3 h-2 sm:w-4 sm:h-3 rounded-[2px] overflow-hidden flex flex-col shadow-sm shrink-0">
                     <div className="h-1/3 bg-[#74acdf]" />
                     <div className="h-1/3 bg-white flex items-center justify-center">
                       <div className="w-0.5 h-0.5 rounded-full bg-yellow-400" />
@@ -340,29 +340,30 @@ export default function StatsPage() {
             <select 
               value={analysisRange}
               onChange={(e) => setAnalysisRange(e.target.value as any)}
-              className="bg-transparent text-white text-[10px] font-black uppercase tracking-widest px-3 py-2 outline-none border-none cursor-pointer"
+              className="bg-transparent text-white text-[9px] sm:text-[10px] font-black uppercase tracking-widest px-2 sm:px-3 py-2 outline-none border-none cursor-pointer"
             >
-              <option value="7days" className="bg-zinc-900">Últimos 7 días</option>
-              <option value="30days" className="bg-zinc-900">Últimos 30 días</option>
-              <option value="month" className="bg-zinc-900">Mes actual</option>
+              <option value="7days" className="bg-zinc-900">7 días</option>
+              <option value="30days" className="bg-zinc-900">30 días</option>
+              <option value="month" className="bg-zinc-900">Mes</option>
             </select>
             <Button 
               onClick={runAnalysis}
               disabled={isAnalyzing}
               className={cn(
-                "bg-sky-500 hover:bg-sky-400 text-white border-none rounded-xl px-6 py-2.5 h-auto font-black uppercase tracking-widest text-xs flex items-center gap-2 transition-all",
+                "bg-sky-500 hover:bg-sky-400 text-white border-none rounded-xl px-4 sm:px-6 py-2 sm:py-2.5 h-auto font-black uppercase tracking-widest text-[10px] sm:text-xs flex items-center gap-1 sm:gap-2 transition-all",
                 isAnalyzing && "opacity-50 cursor-not-allowed"
               )}
             >
               {isAnalyzing ? (
                 <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  Analizando...
+                  <RefreshCw className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+                  <span className="hidden sm:inline">Analizando...</span>
+                  <span className="sm:hidden">...</span>
                 </>
               ) : (
                 <>
-                  <Sparkles className="w-4 h-4" />
-                  Analizar ahora
+                  <Sparkles className="w-3 h-3 sm:w-4 sm:h-4" />
+                  <span className="truncate">Analizar</span>
                 </>
               )}
             </Button>
