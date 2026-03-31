@@ -94,6 +94,15 @@ CREATE TABLE deactivated_slots (
   UNIQUE(pitch_id, slot_date, slot_hour)
 );
 
+-- Notifications Table
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  type TEXT NOT NULL CHECK (type IN ('booking', 'stock')),
+  message TEXT NOT NULL,
+  read BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Enable Row Level Security (RLS)
 ALTER TABLE pitches ENABLE ROW LEVEL SECURITY;
 ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
@@ -103,6 +112,7 @@ ALTER TABLE sale_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE stock_movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deactivated_slots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 
 -- Create Policies (Allow all for anon and authenticated for testing/mock auth)
 CREATE POLICY "Allow all for anon" ON pitches FOR ALL TO anon USING (true) WITH CHECK (true);
@@ -128,3 +138,6 @@ CREATE POLICY "Allow all for authenticated" ON audit_logs FOR ALL TO authenticat
 
 CREATE POLICY "Allow all for anon" ON deactivated_slots FOR ALL TO anon USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all for authenticated" ON deactivated_slots FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all for anon" ON notifications FOR ALL TO anon USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all for authenticated" ON notifications FOR ALL TO authenticated USING (true) WITH CHECK (true);

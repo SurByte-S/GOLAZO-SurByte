@@ -171,7 +171,11 @@ export const dataService = {
         console.error('Error fetching sales from Supabase:', error);
       }
     }
-    return getStorage<Sale[]>('golazo_sales', []);
+    const sales = getStorage<Sale[]>('golazo_sales', []);
+    return sales.map(s => ({
+      ...s,
+      totalPrice: typeof s.totalPrice === 'object' && s.totalPrice !== null ? Number((s.totalPrice as any).total) || 0 : Number(s.totalPrice) || 0,
+    }));
   },
   saveSales: async (sales: Sale[]) => setStorage('golazo_sales', sales),
 
@@ -293,7 +297,11 @@ export const dataService = {
         console.error('Error fetching audit logs from Supabase:', error);
       }
     }
-    return getStorage<AuditLog[]>('golazo_audit_logs', []);
+    const logs = getStorage<AuditLog[]>('golazo_audit_logs', []);
+    return logs.map(l => ({
+      ...l,
+      timestamp: new Date(l.timestamp)
+    }));
   },
   saveAuditLogs: async (logs: AuditLog[]) => setStorage('golazo_audit_logs', logs),
   logAction: async (action: string, details: string) => {

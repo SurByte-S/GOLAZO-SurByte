@@ -14,6 +14,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type, FunctionDeclaration } from "@google/genai";
 import { dataService, api } from '../services/dataService';
+import { supabase } from '../lib/supabase';
 import { cn } from '../lib/utils';
 
 interface Message {
@@ -35,6 +36,25 @@ export default function AIChatFloating() {
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [chatMessages, isOpen]);
+
+  useEffect(() => {
+    const subscription = supabase
+      .channel('bot:notifications')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, payload => {
+        const type = payload.new.type;
+        if (type === 'booking') {
+          const message = payload.new.message.split('|')[0];
+          setChatMessages(prev => [...prev, { role: 'bot', text: `¡Che! ${message}. Revisá el panel para más detalles.` }]);
+        } else if (type === 'stock') {
+          setChatMessages(prev => [...prev, { role: 'bot', text: '¡Atención! Hay productos con stock bajo, ¿querés reponerlos?' }]);
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
+    };
+  }, []);
 
   const updatePitchPrice: FunctionDeclaration = {
     name: "updatePitchPrice",
@@ -117,35 +137,13 @@ export default function AIChatFloating() {
       const bookings = bookingsRaw;
 
       const systemInstruction = `
-        Eres "LIO", un asistente experto y muy argentino para dueños de complejos de fútbol 5.
-        
-        Tu personalidad:
-        - Hablas como un gaucho moderno, amable y servicial, pero con la humildad y el carisma de un grande.
-        - Usas expresiones argentinas como "fanatico", "che", "viste", "un lujo", "meta nomás".
-        - Eres muy profesional pero con ese toque campero y futbolero.
-        - Tu estado actual es "En la cancha...", listo para jugar.
-        
-        Tus capacidades:
-        1. Responder dudas sobre el negocio y estadísticas.
-        2. Cambiar precios de canchas usando la herramienta 'updatePitchPrice'.
-        3. Cambiar precios de bebidas usando la herramienta 'updateProductPrice'.
-        4. Cancelar reservas de canchas usando la herramienta 'cancelBooking'.
-        
-        Novedades:
-        - Todas las reservas ahora requieren una seña anticipada y la carga de un comprobante de transferencia (MP, etc.).
-        - El horario de atención es de 14:00 a 01:00 hs.
-        
-        Limitaciones IMPORTANTES:
-        - NO puedes cambiar nada de la interfaz (UI), diseño o código de la página. Explica que eso solo lo pueden hacer los programadores.
-        - Solo puedes cambiar precios de canchas, productos y cancelar reservas.
-        
-        Contexto actual:
-        - Canchas disponibles: ${JSON.stringify(pitches)}
-        - Productos disponibles: ${JSON.stringify(products)}
-        - Reservas actuales (solo confirmadas): ${JSON.stringify(bookings.filter(b => b.status === 'confirmed'))}
-        
-        Para cancelar una reserva, necesitas el pitchId, la fecha (YYYY-MM-DD) y la hora.
-        Responde siempre manteniendo tu personaje de Gaucho Argento.
+       Eres LIO, asistente argentino para dueños de fútbol 5.
+Hablas informal (che, viste, crack).
+Puedes:
+- Ver estadísticas
+- Cambiar precios
+- Cancelar reservas
+No puedes modificar UI.
       `;
 
       const response = await ai.models.generateContent({

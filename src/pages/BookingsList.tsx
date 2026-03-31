@@ -507,6 +507,13 @@ export default function BookingsList({ user }: BookingsListProps) {
                 <span className="text-2xl font-black text-white">${selectedBookingForDetail.depositAmount || 0}</span>
               </div>
 
+              {selectedBookingForDetail.paymentUrl && (
+                <div className="flex items-center justify-between pt-2 border-t border-zinc-700/50 mt-2">
+                  <span className="text-zinc-400 font-medium">Ref. Mercado Pago</span>
+                  <span className="text-sm font-black text-sky-400">{selectedBookingForDetail.paymentUrl}</span>
+                </div>
+              )}
+
               {user.role === 'admin' && !selectedBookingForDetail.isPaid && (
                 <Button 
                   className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-black py-4 rounded-2xl mt-2"

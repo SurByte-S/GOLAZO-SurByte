@@ -10,6 +10,7 @@ export interface AnalyticsData {
   totalIncome: number;
   incomeByDay: Record<string, number>;
   incomeByPitch: Record<string, number>;
+  pitchNames: Record<string, string>;
   mostUsedHours: { hour: number; count: number }[];
   leastUsedHours: { hour: number; count: number }[];
   occupancyRate: number;
@@ -63,9 +64,10 @@ export const analyticsService = {
       incomeByDay[dayStr] = 0;
     });
     
-    // Initialize pitches
+    const pitchNames: Record<string, string> = {};
     pitches.forEach(p => {
       incomeByPitch[p.id] = 0;
+      pitchNames[p.id] = p.name;
     });
     
     // Process Bookings
@@ -171,6 +173,7 @@ export const analyticsService = {
       totalIncome,
       incomeByDay,
       incomeByPitch,
+      pitchNames,
       mostUsedHours,
       leastUsedHours,
       occupancyRate,

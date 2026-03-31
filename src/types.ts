@@ -32,6 +32,7 @@ export interface Booking {
   receiptUrl?: string;
   depositAmount?: number;
   isPaid?: boolean;
+  paymentUrl?: string;
 }
 
 export interface Product {
@@ -78,6 +79,14 @@ export interface AuditLog {
   details: string;
   timestamp: Date;
   user: string;
+}
+
+export interface Notification {
+  id: string;
+  type: 'booking' | 'stock';
+  message: string;
+  read: boolean;
+  created_at: Date;
 }
 
 export type PitchStatus = 'available' | 'busy' | 'reserved';

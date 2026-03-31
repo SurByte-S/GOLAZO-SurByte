@@ -113,7 +113,9 @@ export const supabaseService = {
       status: b.status,
       createdAt: new Date(b.created_at),
       depositAmount: b.deposit_amount,
-      isPaid: b.is_paid
+      isPaid: b.is_paid,
+      receiptUrl: b.receipt_url,
+      paymentUrl: b.payment_url
     })) as Booking[];
   },
 
@@ -136,7 +138,9 @@ export const supabaseService = {
         end_time: booking.endTime.toISOString(),
         status: booking.status,
         deposit_amount: booking.depositAmount || 0,
-        is_paid: booking.isPaid || false
+        is_paid: booking.isPaid || false,
+        receipt_url: booking.receiptUrl || null,
+        payment_url: booking.paymentUrl || null
       }])
       .select()
       .single();
@@ -147,6 +151,21 @@ export const supabaseService = {
     }
     
     log('Booking added successfully', data);
+    
+    // Add notification
+    try {
+      const { data: pitch } = await supabase.from('pitches').select('name').eq('id', booking.pitchId).single();
+      const pitchName = pitch?.name || 'Cancha';
+      const timeStr = booking.startTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const depositText = booking.depositAmount ? ` (Seña: $${booking.depositAmount})` : '';
+      await supabase.from('notifications').insert([{
+        type: 'booking',
+        message: `Nueva reserva de ${booking.clientName} - ${pitchName} a las ${timeStr}${depositText}|${data.id}`
+      }]);
+    } catch (e) {
+      console.error('Error adding notification', e);
+    }
+
     return {
       id: data.id,
       pitchId: data.pitch_id,
@@ -158,7 +177,8 @@ export const supabaseService = {
       status: data.status,
       createdAt: new Date(data.created_at),
       depositAmount: data.deposit_amount,
-      isPaid: data.is_paid
+      isPaid: data.is_paid,
+      receiptUrl: data.receipt_url
     } as Booking;
   },
 
@@ -250,6 +270,21 @@ export const supabaseService = {
       throw error;
     }
     log(`Product ${id} updated successfully`);
+
+    // Add notification if stock is low
+    try {
+      if (updates.stock !== undefined) {
+        const { data: product } = await supabase.from('products').select('name, stock, min_stock').eq('id', id).single();
+        if (product && product.stock <= product.min_stock) {
+          await supabase.from('notifications').insert([{
+            type: 'stock',
+            message: `Stock bajo - ${product.name} (Quedan ${product.stock})`
+          }]);
+        }
+      }
+    } catch (e) {
+      console.error('Error adding notification', e);
+    }
   },
 
   deleteProduct: async (id: string) => {
@@ -296,6 +331,17 @@ export const supabaseService = {
     try {
       await Promise.all(promises);
       log('Bulk stock update successful');
+      
+      // Check for low stock after bulk update
+      for (const update of updates) {
+        const { data: product } = await supabase.from('products').select('name, stock, min_stock').eq('id', update.productId).single();
+        if (product && product.stock <= product.min_stock) {
+          await supabase.from('notifications').insert([{
+            type: 'stock',
+            message: `Stock bajo - ${product.name} (Quedan ${product.stock})`
+          }]);
+        }
+      }
     } catch (error) {
       logError('Error in bulk stock update', error);
       throw error;
@@ -320,7 +366,7 @@ export const supabaseService = {
       id: s.id,
       productId: s.product_id,
       quantity: s.quantity,
-      totalPrice: s.total_price,
+      totalPrice: typeof s.total_price === 'object' && s.total_price !== null ? Number((s.total_price as any).total) || 0 : Number(s.total_price) || 0,
       date: new Date(s.created_at),
       paymentMethod: s.payment_method,
       items: s.sale_items?.map((item: any) => ({
@@ -337,7 +383,7 @@ export const supabaseService = {
     // Check stock first
     const { data: product, error: fetchError } = await supabase
       .from('products')
-      .select('stock')
+      .select('stock, price')
       .eq('id', sale.productId)
       .single();
       
@@ -410,12 +456,25 @@ export const supabaseService = {
       // without RPC. We'll proceed but log the error.
     }
     
+    // Check for low stock after sale
+    try {
+      const { data: updatedProduct } = await supabase.from('products').select('name, stock, min_stock').eq('id', sale.productId).single();
+      if (updatedProduct && updatedProduct.stock <= updatedProduct.min_stock) {
+        await supabase.from('notifications').insert([{
+          type: 'stock',
+          message: `Stock bajo - ${updatedProduct.name} (Quedan ${updatedProduct.stock})`
+        }]);
+      }
+    } catch (e) {
+      console.error('Error adding notification', e);
+    }
+
     log('Sale added successfully', data);
     return {
       id: data.id,
       productId: data.product_id,
       quantity: data.quantity,
-      totalPrice: data.total_price,
+      totalPrice: typeof data.total_price === 'object' && data.total_price !== null ? Number((data.total_price as any).total) || 0 : Number(data.total_price) || 0,
       date: new Date(data.created_at)
     } as Sale;
   },
@@ -468,31 +527,29 @@ export const supabaseService = {
     }
     log(`Sale ${id} deleted successfully`);
   },
-
-  // Audit Logs
-  getAuditLogs: async () => {
-    log('Fetching audit logs...');
-    const { data, error } = await supabase
-      .from('audit_logs')
-      .select('*')
-      .order('timestamp', { ascending: false })
-      .limit(100);
-    
-    if (error) {
-      logError('Error fetching audit logs', error);
-      throw error;
-    }
-    
-    log('Audit logs fetched successfully', data);
-    return (data || []).map(l => ({
-      id: l.id,
-      action: l.action,
-      details: l.details,
-      timestamp: new Date(l.timestamp),
-      user: l.user_name
-    })) as AuditLog[];
-  },
-
+// Audit Logs
+getAuditLogs: async () => {
+  log('Fetching audit logs...');
+  const { data, error } = await supabase
+    .from('audit_logs')
+    .select('*')
+    .order('created_at', { ascending: false }) // ✅ FIX
+    .limit(100);
+  
+  if (error) {
+    logError('Error fetching audit logs', error);
+    throw error;
+  }
+  
+  log('Audit logs fetched successfully', data);
+  return (data || []).map(l => ({
+    id: l.id,
+    action: l.action,
+    details: typeof l.details === 'string' ? l.details : JSON.stringify(l.details),
+    timestamp: new Date(l.created_at), // ✅ FIX
+    user: l.user_name || 'Sistema' // ✅ fallback seguro
+  })) as AuditLog[];
+},
   // Deactivated Slots
   getDeactivatedSlots: async () => {
     log('Fetching deactivated slots...');
@@ -547,21 +604,67 @@ export const supabaseService = {
       log('Slot deactivated successfully');
     }
   },
-
   logAction: async (action: string, details: string, userName: string = 'Sistema') => {
     const { error } = await supabase
       .from('audit_logs')
       .insert([{
         action,
         details,
-        user_name: userName,
-        timestamp: new Date().toISOString()
+        user_name: userName, // ✅ opcional pero recomendado
+        created_at: new Date().toISOString() // ✅ FIX
       }]);
     
     if (error) {
       logError('Error logging action', error);
     } else {
       log(`Action logged: ${action}`);
+    }
+  },
+
+  // Notifications
+  getNotifications: async () => {
+    log('Fetching notifications...');
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    
+    if (error) {
+      logError('Error fetching notifications', error);
+      throw error;
+    }
+    
+    return (data || []).map(n => ({
+      id: n.id,
+      type: n.type,
+      message: n.message,
+      read: n.read,
+      created_at: new Date(n.created_at)
+    }));
+  },
+
+  markNotificationAsRead: async (id: string) => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', id);
+    
+    if (error) {
+      logError(`Error marking notification ${id} as read`, error);
+      throw error;
+    }
+  },
+
+  markAllNotificationsAsRead: async () => {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ read: true })
+      .eq('read', false);
+    
+    if (error) {
+      logError('Error marking all notifications as read', error);
+      throw error;
     }
   }
 };

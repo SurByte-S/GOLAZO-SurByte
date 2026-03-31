@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
-import { format, addHours, isSameDay, startOfMonth, endOfMonth, startOfWeek, addDays, eachDayOfInterval } from 'date-fns';
+import { format, addHours, isSameDay, startOfMonth, endOfMonth, startOfWeek, addDays, eachDayOfInterval, formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { DayPicker } from 'react-day-picker';
 import { 
@@ -28,7 +28,10 @@ import {
   FileText,
   Download,
   Timer,
-  Zap
+  Zap,
+  ShoppingBag,
+  Package,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { domToPng } from 'modern-screenshot';
@@ -38,8 +41,9 @@ import { Modal } from '../components/Modal';
 import { Badge } from '../components/Badge';
 import ArgentinaCountdown from '../components/ArgentinaCountdown';
 import { ArgentinaLogo } from '../components/ArgentinaLogo';
+import { NotificationsPanel } from '../components/NotificationsPanel';
 import { dataService, api } from '../services/dataService';
-import { Pitch, Booking, User as UserType, Sale } from '../types';
+import { Pitch, Booking, User as UserType, Sale, Product } from '../types';
 import { cn } from '../lib/utils';
 
 interface DashboardProps {
@@ -52,6 +56,7 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [bookingTimer, setBookingTimer] = useState<number | null>(null);
@@ -69,7 +74,9 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
     clientName: user.role === 'client' ? user.name : '',
     clientPhone: '',
     receipt: null as string | null,
-    depositAmount: ''
+    depositAmount: '',
+    paymentMethod: 'transferencia' as 'transferencia' | 'mercadopago',
+    paymentUrl: ''
   });
 
   const [userPoints, setUserPoints] = useState(0);
@@ -79,11 +86,13 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
       const p = await dataService.getPitches();
       const b = await dataService.getBookings();
       const s = await dataService.getSales();
+      const prods = await dataService.getProducts();
       const points = await dataService.getUserPoints(user.id);
       
       setPitches(p);
       setBookings(b);
       setSales(s);
+      setProducts(prods);
       setUserPoints(points);
     };
     fetchData();
@@ -113,7 +122,7 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
     e.preventDefault();
     if (!selectedPitch || !selectedTime) return;
 
-    if (!formData.receipt) {
+    if (formData.paymentMethod === 'transferencia' && !formData.receipt) {
       alert('Por favor, carga el comprobante de la seña.');
       return;
     }
@@ -135,8 +144,9 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
         startTime,
         endTime,
         status: 'confirmed',
-        receiptUrl: formData.receipt,
-        depositAmount: Number(formData.depositAmount) || 0
+        receiptUrl: formData.receipt || undefined,
+        depositAmount: Number(formData.depositAmount) || 0,
+        paymentUrl: formData.paymentMethod === 'mercadopago' ? formData.paymentUrl : undefined
       });
       const updatedBookings = await dataService.getBookings();
       setBookings(updatedBookings);
@@ -147,7 +157,9 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
         clientName: user.role === 'client' ? user.name : '', 
         clientPhone: '', 
         receipt: null, 
-        depositAmount: '' 
+        depositAmount: '',
+        paymentMethod: 'transferencia',
+        paymentUrl: ''
       });
       
       toast.success('¡Reserva confirmada!', {
@@ -228,22 +240,27 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
     return acc + (pitch?.price || 0);
   }, 0);
 
-  const monthStart = startOfMonth(new Date());
-  const monthEnd = endOfMonth(new Date());
-  const monthBookings = bookings.filter(b => b.startTime >= monthStart && b.startTime <= monthEnd && b.status === 'confirmed');
-  const monthIncome = monthBookings.reduce((acc, b) => {
-    const pitch = pitches.find(p => p.id === b.pitchId);
-    return acc + (pitch?.price || 0);
-  }, 0);
-
-  const occupiedPitchesCount = pitches.filter(p => getPitchStatus(p.id) === 'busy').length;
+  const todaySales = sales.filter(s => isSameDay(new Date(s.date), new Date()));
+  const todaySalesIncome = todaySales.reduce((acc, s) => acc + s.totalPrice, 0);
+  const todayTotalIncome = todayIncome + todaySalesIncome;
 
   const hours = Array.from({ length: 12 }, (_, i) => (i + 14) % 24); // 14:00 to 01:00 (starts at 00:00)
+  const occupancyPercentage = pitches.length > 0 ? Math.round((todayBookings.length / (hours.length * pitches.length)) * 100) : 0;
 
-  const weekDays = eachDayOfInterval({
-    start: startOfWeek(selectedDate, { weekStartsOn: 1 }),
-    end: addDays(startOfWeek(selectedDate, { weekStartsOn: 1 }), 6)
-  });
+  let generalStatus = { text: 'Normal', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
+  if (occupancyPercentage >= 80) {
+    generalStatus = { text: 'Saturado', color: 'bg-red-100 text-red-700 border-red-200' };
+  } else if (occupancyPercentage >= 50) {
+    generalStatus = { text: 'Alta Demanda', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' };
+  }
+
+  const nextBooking = bookings
+    .filter(b => b.startTime > new Date() && b.status === 'confirmed')
+    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime())[0];
+
+  const lowStockProducts = products.filter(p => p.stock <= p.min_stock);
+
+  const lastSale = [...sales].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
   const [weather, setWeather] = useState<{ temp: number; condition: string; icon: string; locationName: string }>({
     temp: 22,
@@ -398,271 +415,230 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
   }
 
   return (
-    <div className="space-y-10 pb-20">
-      {/* Welcome & Stats Section */}
-      <header className="flex flex-col gap-10">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
-          <div className="space-y-2">
-            <div className="flex items-center gap-4">
-              <div className="md:hidden">
-                <ArgentinaLogo size="sm" showText={true} />
-              </div>
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-black text-zinc-900 tracking-tighter uppercase italic">INICIO</h1>
-            </div>
-            <div className="flex flex-col">
-              <p className="text-zinc-500 font-bold text-lg italic">¡Hola, {user.name}! 👋</p>
-              <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Panel de control Golazo • Gestión Profesional</p>
-            </div>
-          </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="hidden md:block">
-              <ArgentinaLogo size="md" />
-            </div>
-          </div>
-        </div>
-
-        {/* Stats Grid */}
-        <section className="space-y-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3">
-              <div className="w-2 h-8 bg-sky-500 rounded-full" />
-              Resumen de Hoy
-            </h2>
-            <Badge variant="neutral" className="px-4 py-1.5 rounded-xl border-zinc-200 text-zinc-400 font-black text-[10px] uppercase tracking-widest">
-              Actualizado hace 1 min
+    <div className="space-y-12 pb-20 max-w-7xl mx-auto">
+      {/* 1. HEADER INTELIGENTE */}
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 bg-white p-8 rounded-[32px] shadow-sm border border-zinc-100">
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-4xl sm:text-5xl font-black text-zinc-900 tracking-tighter uppercase italic">Resumen del día</h1>
+            <Badge variant="neutral" className={cn("px-3 py-1 rounded-xl font-black text-xs uppercase tracking-widest border", generalStatus.color)}>
+              {generalStatus.text}
             </Badge>
           </div>
-          
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              { label: 'Turnos Hoy', value: todayBookings.length, icon: CalendarIcon, color: 'bg-blue-500', trend: '+12%', show: user.role === 'admin' },
-              { label: 'Ingresos Hoy', value: `$${todayIncome}`, icon: DollarSign, color: 'bg-emerald-500', trend: '+8%', show: user.role === 'admin' },
-              { label: 'Ingresos Mes', value: `$${monthIncome}`, icon: TrendingUp, color: 'bg-sky-500', trend: '+15%', show: user.role === 'admin' },
-              { label: 'Canchas Ocupadas', value: `${occupiedPitchesCount}/${pitches.length}`, icon: Activity, color: 'bg-orange-500', trend: 'Estable', show: user.role === 'admin' },
-            ].filter(s => s.show).map((stat, i) => (
-              <motion.div
-                key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-              >
-                <Card className="border-none shadow-sm bg-white overflow-hidden group hover:scale-[1.02] transition-all rounded-[20px] relative border border-zinc-100">
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <div className={cn("p-3 rounded-xl text-white shadow-md", stat.color)}>
-                        <stat.icon className="w-5 h-5" />
-                      </div>
-                      <Badge variant="success" className="px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-tighter">
-                        {stat.trend}
-                      </Badge>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-zinc-400 font-black text-[9px] uppercase tracking-[0.2em]">{stat.label}</p>
-                      <h3 className="text-2xl font-black text-zinc-900 tracking-tighter italic uppercase">{stat.value}</h3>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+          <div className="flex items-center gap-2 text-zinc-500 font-medium">
+            <CalendarIcon className="w-5 h-5" />
+            <span className="text-lg capitalize">{format(new Date(), "EEEE d 'de' MMMM, yyyy", { locale: es })}</span>
           </div>
-        </section>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="hidden md:block mr-4">
+            <NotificationsPanel onNotificationClick={async (bookingId) => {
+              let booking = bookings.find(b => b.id === bookingId);
+              if (!booking) {
+                const latestBookings = await dataService.getBookings();
+                setBookings(latestBookings);
+                booking = latestBookings.find(b => b.id === bookingId);
+              }
+              if (booking) {
+                setSelectedBooking(booking);
+                setIsBookingDetailModalOpen(true);
+              } else {
+                toast.error('No se pudo encontrar la reserva');
+              }
+            }} />
+          </div>
+          <Button 
+            onClick={() => onNavigate && onNavigate('calendar')}
+            className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs shadow-lg shadow-sky-500/20 hover:scale-105 transition-transform"
+          >
+            <Plus className="w-5 h-5 mr-2" />
+            Nueva Reserva
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={() => onNavigate && onNavigate('sales')}
+            className="rounded-2xl py-6 px-6 font-black uppercase tracking-widest text-xs border-zinc-200 hover:bg-zinc-50 hover:scale-105 transition-transform"
+          >
+            <ShoppingBag className="w-5 h-5 mr-2" />
+            Nueva Venta
+          </Button>
+        </div>
       </header>
 
-      {/* Main Content Area: SaaS Premium Dashboard Layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        
-        {/* Left Column: Sidebar (3 columns) */}
-        <aside className="lg:col-span-3 space-y-6 order-2 lg:order-1">
-          <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-black text-zinc-900 uppercase tracking-widest flex items-center gap-2">
-                <Clock className="w-4 h-4 text-sky-500" />
-                Agenda Hoy
-              </h3>
-              <Badge variant="neutral" className="text-[9px] font-black uppercase tracking-widest bg-zinc-50 border-zinc-100">
-                {format(selectedDate, 'dd/MM')}
-              </Badge>
-            </div>
-            
-            <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-              {hours.map(hour => {
-                const timeStr = `${hour.toString().padStart(2, '0')}:00`;
-                const occupiedCount = bookings.filter(b => 
-                  b.startTime.getHours() === hour && 
-                  isSameDay(b.startTime, selectedDate) && 
-                  b.status === 'confirmed'
-                ).length;
-                
-                const isFullyOccupied = occupiedCount === pitches.length;
-
-                return (
-                  <div 
-                    key={hour}
-                    className={cn(
-                      "flex items-center justify-between p-3 rounded-xl border transition-all",
-                      isFullyOccupied 
-                        ? "bg-red-50/50 border-red-100 text-red-700" 
-                        : "bg-emerald-50/50 border-emerald-100 text-emerald-700"
-                    )}
-                  >
-                    <span className="font-bold text-xs">{timeStr}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[9px] font-black uppercase tracking-tighter opacity-70">
-                        {occupiedCount}/{pitches.length}
-                      </span>
-                      <div className={cn(
-                        "w-1.5 h-1.5 rounded-full",
-                        isFullyOccupied ? "bg-red-500" : "bg-emerald-500"
-                      )} />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="bg-zinc-900 p-6 rounded-[24px] text-white shadow-xl relative overflow-hidden">
-            <div className="relative z-10">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap className="w-4 h-4 text-sky-400" />
-                <span className="text-[10px] font-black uppercase tracking-widest">Ocupación</span>
+      {/* 2. MÉTRICAS CLAVE */}
+      <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { label: 'Turnos del día', value: todayBookings.length, icon: CalendarIcon, color: 'text-blue-500', bg: 'bg-blue-50' },
+          { label: 'Ingresos del día', value: `$${todayTotalIncome}`, icon: DollarSign, color: 'text-emerald-500', bg: 'bg-emerald-50' },
+          { label: 'Ventas del día', value: todaySales.length, icon: ShoppingBag, color: 'text-purple-500', bg: 'bg-purple-50' },
+          { label: 'Ocupación', value: `${occupancyPercentage}%`, icon: Activity, color: 'text-orange-500', bg: 'bg-orange-50' },
+        ].map((stat, i) => (
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.1 }}
+          >
+            <Card className="border-none shadow-sm bg-white rounded-[32px] p-8 hover:shadow-md transition-shadow">
+              <div className="flex flex-col gap-6">
+                <div className={cn("w-14 h-14 rounded-2xl flex items-center justify-center", stat.bg, stat.color)}>
+                  <stat.icon className="w-7 h-7" />
+                </div>
+                <div>
+                  <p className="text-zinc-400 font-bold text-sm uppercase tracking-widest mb-2">{stat.label}</p>
+                  <h3 className="text-5xl font-black text-zinc-900 tracking-tighter italic">{stat.value}</h3>
+                </div>
               </div>
-              <div className="text-3xl font-black italic tracking-tighter mb-1">
-                {Math.round((bookings.filter(b => isSameDay(b.startTime, selectedDate)).length / (hours.length * pitches.length)) * 100)}%
-              </div>
-              <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden mt-3">
-                <div 
-                  className="h-full bg-sky-500 transition-all duration-1000" 
-                  style={{ width: `${(bookings.filter(b => isSameDay(b.startTime, selectedDate)).length / (hours.length * pitches.length)) * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </aside>
+            </Card>
+          </motion.div>
+        ))}
+      </section>
 
-        {/* Center Column: Main Content (6 columns) */}
-        <main className="lg:col-span-6 space-y-8 order-1 lg:order-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3">
-              <div className="w-1 h-5 bg-sky-500 rounded-full" />
-              Canchas Disponibles
-            </h2>
-            <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-zinc-100 shadow-sm">
-              <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, -1))} className="h-8 w-8 p-0 rounded-lg">
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="px-2 text-[10px] font-black text-zinc-600 uppercase tracking-widest">
-                {format(selectedDate, "d MMM", { locale: es })}
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => setSelectedDate(d => addDays(d, 1))} className="h-8 w-8 p-0 rounded-lg">
-                <ChevronRight className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* 3. ZONA OPERATIVA */}
+        <section className="lg:col-span-2 space-y-6">
+          <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3 px-2">
+            <Zap className="w-6 h-6 text-sky-500" />
+            Próximas Acciones
+          </h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {pitches.map((pitch) => {
-              const status = getPitchStatus(pitch.id);
-              const pitchBookings = bookings.filter(b => b.pitchId === pitch.id && isSameDay(b.startTime, selectedDate) && b.status === 'confirmed');
-              const occupancyPercentage = (pitchBookings.length / hours.length) * 100;
-
-              return (
-                <Card 
-                  key={pitch.id}
-                  className="border-none shadow-sm hover:shadow-md transition-all group bg-white rounded-[24px] overflow-hidden border border-zinc-100"
-                >
-                  <div className="h-40 relative overflow-hidden">
-                    <img 
-                      src={`https://picsum.photos/seed/${pitch.name}/600/400`} 
-                      alt={pitch.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                      referrerPolicy="no-referrer"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                    <div className="absolute bottom-4 left-4 right-4 flex items-end justify-between">
-                      <div>
-                        <h3 className="font-black text-white text-lg uppercase italic tracking-tight leading-none">{pitch.name}</h3>
-                        <p className="text-[9px] font-black text-white/60 uppercase tracking-widest mt-1">{pitch.type}</p>
-                      </div>
-                      <Badge 
-                        variant={status === 'available' ? 'success' : 'danger'} 
-                        className="px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest bg-white/10 backdrop-blur-md border-white/20 text-white"
-                      >
-                        {status === 'available' ? 'Libre' : 'En Juego'}
-                      </Badge>
+          <div className="grid grid-cols-1 gap-4">
+            {/* Próxima Reserva */}
+            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-sky-200 transition-colors">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 rounded-full bg-sky-50 flex items-center justify-center text-sky-500">
+                  <Clock className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Próxima Reserva</p>
+                  {nextBooking ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black text-zinc-900">{format(nextBooking.startTime, 'HH:mm')}</span>
+                      <span className="text-zinc-300">•</span>
+                      <span className="font-medium text-zinc-600">{pitches.find(p => p.id === nextBooking.pitchId)?.name}</span>
+                      <span className="text-zinc-300">•</span>
+                      <span className="font-medium text-zinc-600">{nextBooking.clientName}</span>
                     </div>
-                  </div>
+                  ) : (
+                    <p className="text-lg font-medium text-zinc-500">No hay reservas próximas</p>
+                  )}
+                </div>
+              </div>
+              {nextBooking && (
+                <Button variant="ghost" className="rounded-xl" onClick={() => {
+                  setSelectedBooking(nextBooking);
+                  setIsBookingDetailModalOpen(true);
+                }}>
+                  Ver detalle
+                </Button>
+              )}
+            </div>
 
-                  <CardContent className="p-5 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <DollarSign className="w-3.5 h-3.5 text-emerald-500" />
-                        <span className="text-lg font-black text-zinc-900 tracking-tighter">${pitch.price}</span>
-                        <span className="text-[9px] font-bold uppercase text-zinc-400">/ hr</span>
-                      </div>
-                      <div className="h-1.5 w-24 bg-zinc-100 rounded-full overflow-hidden">
-                        <div 
-                          className={cn(
-                            "h-full transition-all duration-1000",
-                            occupancyPercentage > 80 ? "bg-red-500" : occupancyPercentage > 40 ? "bg-orange-500" : "bg-emerald-500"
-                          )} 
-                          style={{ width: `${occupancyPercentage}%` }}
-                        />
-                      </div>
+            {/* Stock Bajo */}
+            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-orange-200 transition-colors">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
+                  <Package className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Alertas de Stock</p>
+                  {lowStockProducts.length > 0 ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black text-orange-600">{lowStockProducts.length} productos</span>
+                      <span className="font-medium text-zinc-600">por debajo del mínimo</span>
                     </div>
-
-                    <Button 
-                      className="w-full py-3 rounded-xl font-black text-[10px] tracking-widest uppercase bg-zinc-900 text-white hover:bg-zinc-800 transition-all"
-                      onClick={() => {
-                        setSelectedPitch(pitch);
-                        setIsPitchScheduleModalOpen(true);
-                      }}
-                    >
-                      Ver Horarios
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
-        </main>
-
-        {/* Right Column: Widgets (3 columns) */}
-        <aside className="lg:col-span-3 space-y-6 order-3">
-          {/* Weather Widget */}
-          <div className="bg-white p-6 rounded-[24px] border border-zinc-100 shadow-sm flex flex-col items-center text-center">
-            <div className="w-16 h-16 bg-sky-50 rounded-full flex items-center justify-center mb-4">
-              <span className="text-4xl">{weather.icon}</span>
+                  ) : (
+                    <p className="text-lg font-medium text-zinc-500">Stock en niveles normales</p>
+                  )}
+                </div>
+              </div>
+              {lowStockProducts.length > 0 && (
+                <Button variant="ghost" className="rounded-xl text-orange-600 hover:text-orange-700 hover:bg-orange-50" onClick={() => onNavigate && onNavigate('admin')}>
+                  Reponer
+                </Button>
+              )}
             </div>
-            <div className="space-y-0.5">
-              <h4 className="text-3xl font-black text-zinc-900 tracking-tighter">{weather.temp}°C</h4>
-              <p className="text-[9px] font-black text-sky-500 uppercase tracking-widest">{weather.locationName}</p>
-              <p className="text-[10px] font-bold text-zinc-400 mt-1">{weather.condition}</p>
+
+            {/* Última Venta */}
+            <div className="bg-white p-6 rounded-[24px] shadow-sm border border-zinc-100 flex items-center justify-between group hover:border-emerald-200 transition-colors">
+              <div className="flex items-center gap-5">
+                <div className="w-12 h-12 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500">
+                  <DollarSign className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Última Venta</p>
+                  {lastSale ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg font-black text-emerald-600">${lastSale.totalPrice}</span>
+                      <span className="text-zinc-300">•</span>
+                      <span className="font-medium text-zinc-600">{formatDistanceToNow(new Date(lastSale.date), { addSuffix: true, locale: es })}</span>
+                    </div>
+                  ) : (
+                    <p className="text-lg font-medium text-zinc-500">No hay ventas recientes</p>
+                  )}
+                </div>
+              </div>
+              {lastSale && (
+                <Button variant="ghost" className="rounded-xl" onClick={() => onNavigate && onNavigate('sales')}>
+                  Ver ventas
+                </Button>
+              )}
             </div>
           </div>
+        </section>
 
-          {/* World Cup Widget */}
-          <div className="bg-white p-6 rounded-[24px] border border-zinc-100 shadow-sm space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Trophy className="w-4 h-4 text-sky-500" />
-              <h3 className="text-[10px] font-black text-zinc-900 uppercase tracking-widest">Mundial 2026</h3>
-            </div>
-            <ArgentinaCountdown />
-          </div>
-
-          {/* Quick Actions */}
-          <div className="space-y-3">
-            <Button 
-              variant="outline" 
-              className="w-full h-12 rounded-xl border-zinc-200 font-black text-[10px] uppercase tracking-widest gap-2"
-              onClick={() => onNavigate ? onNavigate('calendar') : window.location.href = '/calendar'}
+        {/* 4. SECCIÓN SECUNDARIA */}
+        <section className="space-y-6">
+          <h2 className="text-2xl font-black text-zinc-900 tracking-tight uppercase italic flex items-center gap-3 px-2">
+            <LayoutGrid className="w-6 h-6 text-sky-500" />
+            Accesos Rápidos
+          </h2>
+          
+          <div className="grid grid-cols-1 gap-4">
+            <button 
+              onClick={() => onNavigate && onNavigate('calendar')}
+              className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-sky-200 hover:shadow-md transition-all group"
             >
-              <CalendarIcon className="w-4 h-4" />
-              Ir al Calendario
-            </Button>
+              <div className="w-10 h-10 rounded-xl bg-sky-50 text-sky-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <CalendarIcon className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-bold text-zinc-900">Ir a Reservas</h3>
+                <p className="text-xs text-zinc-500">Gestionar turnos de canchas</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-sky-500 transition-colors" />
+            </button>
+
+            <button 
+              onClick={() => onNavigate && onNavigate('sales')}
+              className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-purple-200 hover:shadow-md transition-all group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-bold text-zinc-900">Ir a Ventas</h3>
+                <p className="text-xs text-zinc-500">Kiosco y productos</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-purple-500 transition-colors" />
+            </button>
+
+            <button 
+              onClick={() => onNavigate && onNavigate('admin')}
+              className="w-full flex items-center gap-4 p-5 bg-white rounded-[24px] border border-zinc-100 hover:border-zinc-300 hover:shadow-md transition-all group"
+            >
+              <div className="w-10 h-10 rounded-xl bg-zinc-100 text-zinc-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Settings className="w-5 h-5" />
+              </div>
+              <div className="text-left">
+                <h3 className="font-bold text-zinc-900">Configuración</h3>
+                <p className="text-xs text-zinc-500">Ajustes del sistema</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-zinc-300 ml-auto group-hover:text-zinc-900 transition-colors" />
+            </button>
           </div>
-        </aside>
+        </section>
       </div>
 
       {/* Pitch Schedule Modal (Time Selection Menu) */}
@@ -842,52 +818,112 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-bold text-zinc-700 ml-1">Comprobante de transferencia</label>
-              <div 
-                className={cn(
-                  "relative border-2 border-dashed rounded-2xl p-4 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group",
-                  formData.receipt ? "border-sky-500 bg-sky-500/5" : "border-zinc-200 hover:border-sky-500 hover:bg-sky-500/5"
-                )}
-                onClick={() => document.getElementById('receipt-upload')?.click()}
-              >
-                <input 
-                  id="receipt-upload"
-                  type="file" 
-                  accept="image/*,application/pdf" 
-                  className="hidden" 
-                  onChange={handleFileChange}
-                />
-                
-                {formData.receipt ? (
-                  <>
-                    <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white shadow-lg">
-                      <CheckCircle2 className="w-5 h-5" />
-                    </div>
-                    <p className="text-xs font-black text-sky-600 uppercase tracking-widest">¡Comprobante cargado!</p>
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setFormData(prev => ({ ...prev, receipt: null }));
-                      }}
-                      className="text-[9px] font-black text-zinc-400 hover:text-red-500 uppercase tracking-widest"
-                    >
-                      Cambiar imagen
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <div className="w-10 h-10 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:text-sky-500 transition-colors">
-                      <Upload className="w-5 h-5" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-xs font-bold text-zinc-600">Haz clic para subir el comprobante</p>
-                      <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">MP, Transferencia, etc.</p>
-                    </div>
-                  </>
-                )}
+              <label className="text-sm font-bold text-zinc-700 ml-1">Método de pago de seña</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, paymentMethod: 'transferencia' })}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border",
+                    formData.paymentMethod === 'transferencia' 
+                      ? "bg-sky-50 text-sky-600 border-sky-200" 
+                      : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
+                  )}
+                >
+                  Transferencia
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, paymentMethod: 'mercadopago' })}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all border",
+                    formData.paymentMethod === 'mercadopago' 
+                      ? "bg-sky-50 text-sky-600 border-sky-200" 
+                      : "bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-50"
+                  )}
+                >
+                  Mercado Pago
+                </button>
               </div>
             </div>
+
+            {formData.paymentMethod === 'transferencia' ? (
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-zinc-700 ml-1">Comprobante de transferencia</label>
+                <div 
+                  className={cn(
+                    "relative border-2 border-dashed rounded-2xl p-4 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer group",
+                    formData.receipt ? "border-sky-500 bg-sky-500/5" : "border-zinc-200 hover:border-sky-500 hover:bg-sky-500/5"
+                  )}
+                  onClick={() => document.getElementById('receipt-upload')?.click()}
+                >
+                  <input 
+                    id="receipt-upload"
+                    type="file" 
+                    accept="image/*,application/pdf" 
+                    className="hidden" 
+                    onChange={handleFileChange}
+                  />
+                  
+                  {formData.receipt ? (
+                    <>
+                      <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white shadow-lg">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                      <p className="text-xs font-black text-sky-600 uppercase tracking-widest">¡Comprobante cargado!</p>
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData(prev => ({ ...prev, receipt: null }));
+                        }}
+                        className="text-[9px] font-black text-zinc-400 hover:text-red-500 uppercase tracking-widest"
+                      >
+                        Cambiar imagen
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-10 h-10 bg-zinc-100 rounded-2xl flex items-center justify-center text-zinc-400 group-hover:text-sky-500 transition-colors">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div className="text-center">
+                        <p className="text-xs font-bold text-zinc-600">Haz clic para subir el comprobante</p>
+                        <p className="text-[9px] font-black text-zinc-400 uppercase tracking-widest mt-1">MP, Transferencia, etc.</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 bg-sky-50/50 p-4 rounded-2xl border border-sky-100">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-zinc-700">Link de pago generado:</span>
+                  <a 
+                    href={`https://link.mercadopago.com.ar/golazo${Math.random().toString(36).substring(7)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-black text-sky-600 hover:text-sky-700 underline"
+                  >
+                    Abrir Mercado Pago
+                  </a>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-zinc-700 ml-1">ID de Pago o Referencia</label>
+                  <div className="relative">
+                    <CheckCircle2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+                    <input
+                      required
+                      type="text"
+                      placeholder="Ej: 1234567890"
+                      className="w-full pl-12 pr-4 py-4 bg-white border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900"
+                      value={formData.paymentUrl}
+                      onChange={e => setFormData({ ...formData, paymentUrl: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <Button type="submit" className="w-full py-5 text-lg font-black tracking-tight shadow-xl shadow-sky-500/20">
@@ -944,6 +980,18 @@ export default function Dashboard({ user, onNavigate, onLogout }: DashboardProps
                   <div>
                     <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Seña</p>
                     <p className="text-xl font-black text-sky-600">${selectedBooking.depositAmount}</p>
+                  </div>
+                </div>
+              )}
+
+              {selectedBooking.paymentUrl && (
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+                    <CheckCircle2 className="w-6 h-6 text-sky-500" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-zinc-400 uppercase tracking-widest">Referencia Mercado Pago</p>
+                    <p className="text-xl font-black text-zinc-900">{selectedBooking.paymentUrl}</p>
                   </div>
                 </div>
               )}

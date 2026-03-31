@@ -188,7 +188,7 @@ export default function App() {
 
   if (!user) {
     return (
-      <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-6 relative overflow-hidden">
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-start p-6 md:p-12 lg:p-24 relative overflow-hidden">
         {/* Background Image - Campeones del Mundo 2022 (Rotativo) */}
         <div className="absolute inset-0 z-0">
           <AnimatePresence mode="wait">

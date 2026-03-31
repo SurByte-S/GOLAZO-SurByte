@@ -175,7 +175,7 @@ const BusinessAnalysis: React.FC = () => {
                   <div className="space-y-2">
                     {Object.entries(data.incomeByPitch).map(([id, income]) => (
                       <div key={id} className="flex items-center justify-between text-sm">
-                        <span className="text-zinc-600">Cancha {id.replace('p', '')}</span>
+                        <span className="text-zinc-600">{data.pitchNames[id] || `Cancha ${id.replace('p', '')}`}</span>
                         <span className="font-bold text-zinc-900">{formatCurrency(income as number)}</span>
                       </div>
                     ))}
