@@ -1,7 +1,7 @@
 import { Pitch, Booking, Product, Sale, User, AuditLog, BookingStatus, Client } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { supabaseService } from './supabaseService';
-import { supabase } from '../lib/supabase';
+import { supabase, getSupabaseDiagnostics } from '../lib/supabase';
 
 // Initial Mock Data (Fallback)
 const MOCK_PITCHES: Pitch[] = [
@@ -87,10 +87,8 @@ const setStorage = <T>(key: string, data: T) => {
 };
 
 const isSupabaseConfigured = () => {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  const isDummyUrl = url?.includes('your-project.supabase.co') || url?.includes('TODO_');
-  const hasEnvVars = !!url && !!key && url !== "" && key !== "" && !isDummyUrl;
+  const diagnostics = getSupabaseDiagnostics();
+  const hasEnvVars = diagnostics.hasUrl && diagnostics.hasKey && diagnostics.validKey && !diagnostics.isDummyUrl && diagnostics.hasHttpsUrl;
   
   // If we've explicitly determined it's unreachable via health check, treat as unconfigured
   const isReachable = (window as any)._supabaseReachable !== false;
@@ -100,7 +98,10 @@ const isSupabaseConfigured = () => {
   if (!configured) {
     // Only log once to avoid spam
     if (!(window as any)._supabaseWarned) {
-      console.warn('[DataService] Supabase not configured or unreachable. Using LocalStorage fallback.');
+      console.warn('[DataService] Supabase not configured or unreachable. Using LocalStorage fallback.', {
+        diagnostics,
+        isReachable
+      });
       (window as any)._supabaseWarned = true;
     }
   }
