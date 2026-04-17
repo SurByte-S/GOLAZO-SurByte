@@ -70,10 +70,14 @@ export default function SuperAdminSaaS() {
   });
 
   const invokeAdminOp = async (action: string, payload: any = {}) => {
-    const superAdminPassword = import.meta.env.VITE_SUPERADMIN_PASSWORD || 'exemartinygolazo2026';
+        const superAdminPassword = import.meta.env.VITE_SUPERADMIN_PASSWORD;
+    const headers: Record<string, string> = {};
+    if (superAdminPassword) {
+      headers['x-superadmin-password'] = superAdminPassword;
+    }
     const { data, error } = await supabase.functions.invoke('admin-ops', {
       body: { action, payload },
-      headers: { 'x-superadmin-password': superAdminPassword }
+      headers
     });
     if (error) throw error;
     if (data?.error) throw new Error(data.error);
