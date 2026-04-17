@@ -13,12 +13,37 @@ serve(async (req) => {
   }
 
   try {
-    // 1. VALIDACIÓN DE SEGURIDAD (Solo el Superadmin conoce esta contraseña)
+    
+    // 1. VALIDACIÓN DE SEGURIDAD
+    // Permite dos mecanismos:
+    // - Contraseña compartida por header (x-superadmin-password)
+    // - JWT de un usuario autenticado con role=superadmin
     const superadminPassword = req.headers.get('x-superadmin-password')
     const envPassword = Deno.env.get('SUPERADMIN_PASSWORD')
     
-    if (!superadminPassword || superadminPassword !== envPassword) {
-      return new Response(JSON.stringify({ error: 'No autorizado. Contraseña de superadmin inválida.' }), { 
+    const authHeader = req.headers.get('authorization')
+
+    const isPasswordValid = !!envPassword && superadminPassword === envPassword
+    let isSuperadminJwt = false
+
+    if (authHeader?.startsWith('Bearer ')) {
+      const jwt = authHeader.replace('Bearer ', '').trim()
+      if (jwt) {
+        const supabaseAuth = createClient(
+          Deno.env.get('SUPABASE_URL') ?? '',
+          Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+          { auth: { persistSession: false } }
+        )
+
+        const { data: authData, error: authError } = await supabaseAuth.auth.getUser(jwt)
+        if (!authError && authData.user?.user_metadata?.role === 'superadmin') {
+          isSuperadminJwt = true
+        }
+      }
+    }
+
+    if (!isPasswordValid && !isSuperadminJwt) {
+      return new Response(JSON.stringify({ error: 'No autorizado. Debes usar credenciales de superadmin válidas.' }), { 
         status: 401, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       })
