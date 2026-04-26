@@ -1,6 +1,7 @@
 import { Pitch, Booking, Product, Sale, User, UserRole, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus, Client } from '../types';
 import { addHours, startOfDay, endOfDay, isSameDay } from 'date-fns';
 import { supabaseService } from './supabaseService';
+import { getPublicPortalClientById } from './publicPortalClients';
 
 import { supabase, getSupabaseDiagnostics } from '../lib/supabase';
 
@@ -215,10 +216,26 @@ export const dataService = {
         .eq('id', clientId);
       const { data, error } = await query.limit(1).single();
       if (error) {
-        if (error.code !== 'PGRST116') {
-          console.error('Error fetching client config:', error);
+        if (error.code === 'PGRST116') {
+          return null;
         }
-        return null;
+
+        console.error('Error fetching client config, trying minimal fallback:', error);
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('clients')
+          .select('id, name, complex_name, status, created_at, expires_at, phone, address')
+          .eq('id', clientId)
+          .limit(1)
+          .single();
+
+        if (fallbackError) {
+          if (fallbackError.code !== 'PGRST116') {
+            console.error('Error fetching client config fallback:', fallbackError);
+          }
+          return getPublicPortalClientById(clientId);
+        }
+
+        return fallbackData as Client;
       }
       return data as Client;
     }
@@ -229,7 +246,8 @@ export const dataService = {
     if (isSupabaseConfigured()) {
       return await supabaseService.getPitches(clientId);
     }
-    return getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES);
+    return getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES)
+      .filter((pitch) => pitch.active && (!clientId || pitch.client_id === clientId));
   },
   savePitches: async (pitches: Pitch[]) => {
     if (isSupabaseConfigured()) {

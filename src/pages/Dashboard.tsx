@@ -98,16 +98,13 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
 
       try {
         setLoadError(null);
-        const p = await dataService.getPitches(clientId);
-        setPitches(p);
+        const [p, b] = await Promise.all([
+          dataService.getPitches(clientId),
+          dataService.getBookings(clientId),
+        ]);
 
-        try {
-          const b = await dataService.getBookings(clientId);
-          setBookings(b);
-        } catch (bookingsError) {
-          console.error('Error loading bookings:', bookingsError);
-          setBookings([]);
-        }
+        setPitches(p);
+        setBookings(b);
 
         if (user.role === 'admin') {
           const [s, prods] = await Promise.all([
@@ -556,7 +553,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           )}
         </div>
       </header>
-
+supabase/migrations/202604251200_public_active_pitches.sql
       {/* 2. MÉTRICAS CLAVE */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
