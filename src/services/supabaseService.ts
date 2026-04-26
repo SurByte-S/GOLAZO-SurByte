@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { Pitch, Booking, Product, Sale, User, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus } from '../types';
 import imageCompression from 'browser-image-compression';
+import { PUBLIC_PORTAL_CLIENTS } from './publicPortalClients';
 
 const log = (message: string, data?: any) => {
   console.log(`[Supabase Service] ${message}`, data || '');
@@ -133,11 +134,24 @@ export const supabaseService = {
       .order('complex_name', { ascending: true });
 
     if (error) {
-      logError('Error fetching public clients catalog', error);
-      throw error;
+      logError('Error fetching public clients catalog, trying minimal fallback', error);
+
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from('clients')
+        .select('id, name, complex_name, address, status, expires_at, created_at')
+        .eq('status', 'active')
+        .or(`expires_at.is.null,expires_at.gte.${nowIso}`)
+        .order('complex_name', { ascending: true });
+
+      if (fallbackError) {
+        logError('Error fetching public clients catalog fallback', fallbackError);
+        return PUBLIC_PORTAL_CLIENTS;
+      }
+
+      return fallbackData && fallbackData.length > 0 ? (fallbackData || []) as any[] : PUBLIC_PORTAL_CLIENTS;
     }
 
-    return (data || []) as any[];
+    return data && data.length > 0 ? (data || []) as any[] : PUBLIC_PORTAL_CLIENTS;
   },
 
   // Test Connection
@@ -202,8 +216,9 @@ export const supabaseService = {
 
     const { data, error } = await supabase
       .from('pitches')
-      .select('id, name, type, price, active, client_id')
+      .select('*')
       .eq('client_id', requiredClientId)
+      .eq('active', true)
       .order('created_at', { ascending: false })
       .limit(50);
     

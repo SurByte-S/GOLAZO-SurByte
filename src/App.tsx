@@ -49,6 +49,8 @@ import { supabase, checkSupabaseConnection } from './lib/supabase';
 
 type Page = 'dashboard' | 'bookings' | 'calendar' | 'sales' | 'admin' | 'ranking' | 'stats';
 
+const PUBLIC_SELECTION_BACKGROUND = 'https://iili.io/q6oJgJ2.jpg';
+
 export default function App() {
   const pathname = window.location.pathname;
   const isSuperAdminRoute = pathname.startsWith('/panel-interno-golazo-');
@@ -255,6 +257,7 @@ export default function App() {
     dataService.setPublicClientSelection(client.id);
     setSelectedPublicClientId(client.id);
     setClientConfig(client);
+    setUser(null);
     setLoginError(null);
     setCurrentPage('dashboard');
   };
@@ -278,6 +281,12 @@ export default function App() {
       : null;
   const activeUser = user ?? publicPortalUser;
 
+  useEffect(() => {
+    if (!isPublicRoute) return;
+    console.log('selectedPublicClientId', selectedPublicClientId);
+    console.log('public user client_id', publicPortalUser?.client_id || user?.client_id);
+  }, [isPublicRoute, selectedPublicClientId, publicPortalUser?.client_id, user?.client_id]);
+
   const navItems = [
     { id: 'dashboard', label: 'Inicio', icon: Home, roles: ['admin', 'client'] },
     { id: 'bookings', label: 'Reservas', icon: CalendarIcon, roles: ['admin', 'client'], featureKey: 'reservas' },
@@ -299,12 +308,16 @@ export default function App() {
     return true;
   });
 
-  const BACKGROUND_IMAGES = [
-    "https://iili.io/q6oJgJ2.jpg", // Imagen proporcionada por el usuario 1
-  ];
-
-  const bgImage = BACKGROUND_IMAGES[0];
+  const bgImage = PUBLIC_SELECTION_BACKGROUND;
   const selectedPublicClient = publicClients.find((client) => client.id === selectedPublicClientId) || null;
+  const getClientDisplayName = (client: Client) => client.complex_name?.trim() || client.name?.trim() || 'Complejo';
+  const getClientInitials = (client: Client) =>
+    getClientDisplayName(client)
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((word) => word[0]?.toUpperCase() || '')
+      .join('') || 'GL';
   const filteredPublicClients = publicClients.filter((client) => {
     const label = `${client.complex_name || ''} ${client.name || ''} ${client.address || ''}`.toLowerCase();
     return label.includes(publicSearchTerm.toLowerCase());
@@ -312,6 +325,19 @@ export default function App() {
   useEffect(() => {
     // No rotation needed
   }, []);
+
+  useEffect(() => {
+    if (!isPublicRoute || isPublicClientsLoading || !selectedPublicClientId || publicClients.length === 0) return;
+
+    const selectedClientStillExists = publicClients.some((client) => client.id === selectedPublicClientId);
+    if (!selectedClientStillExists) {
+      dataService.clearPublicClientSelection();
+      setSelectedPublicClientId(null);
+      setClientConfig(null);
+      setUser(null);
+      toast.error('El complejo seleccionado ya no esta disponible.');
+    }
+  }, [isPublicRoute, isPublicClientsLoading, selectedPublicClientId, publicClients]);
 
   if (isSuperAdminRoute) {
     return <SuperAdminSaaS />;
@@ -408,94 +434,139 @@ export default function App() {
     if (isPublicRoute && !selectedPublicClientId) {
       return (
         <div className="min-h-screen bg-zinc-950 text-white relative overflow-hidden">
+          <div
+            className="absolute inset-0"
+            style={{
+              backgroundImage: `url(${PUBLIC_SELECTION_BACKGROUND})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundRepeat: 'no-repeat',
+            }}
+          />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_28%),radial-gradient(circle_at_right,rgba(56,189,248,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(250,204,21,0.12),transparent_26%)]" />
           <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-0 left-0 w-[40rem] h-[40rem] bg-sky-500/15 rounded-full blur-[140px]" />
-            <div className="absolute bottom-0 right-0 w-[36rem] h-[36rem] bg-cyan-400/10 rounded-full blur-[140px]" />
+            <div className="absolute -top-20 -left-12 h-72 w-72 rounded-full bg-emerald-400/16 blur-[120px]" />
+            <div className="absolute top-1/3 -right-24 h-80 w-80 rounded-full bg-sky-400/12 blur-[140px]" />
+            <div className="absolute bottom-0 left-1/4 h-64 w-64 rounded-full bg-amber-300/10 blur-[120px]" />
           </div>
 
-          <div className="relative z-10 max-w-7xl mx-auto px-6 py-10 md:px-10 md:py-14">
-            <div className="max-w-3xl space-y-5 mb-10">
-              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-sky-400/20 bg-sky-400/10 text-sky-300 text-[11px] font-black uppercase tracking-[0.28em]">
-                <Building2 className="w-4 h-4" />
-                Acceso Publico
+          <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-6 md:px-10 md:py-10">
+            <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="max-w-4xl space-y-5">
+                <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.28em] text-emerald-200 backdrop-blur-xl">
+                  <Target className="w-4 h-4 text-emerald-300" />
+                  Acceso Publico
               </div>
-              <h1 className="text-4xl md:text-6xl font-black tracking-tighter leading-none">
-                Elegi tu complejo para entrar al panel del jugador
-              </h1>
-              <p className="text-zinc-300 text-base md:text-lg max-w-2xl">
+                <div className="space-y-4">
+                  <h1 className="max-w-4xl text-4xl font-black leading-[0.92] tracking-[-0.04em] text-white md:text-6xl xl:text-7xl">
+                    Elegi tu complejo y entra a reservar con una experiencia mas pro.
+                  </h1>
+                  <p className="max-w-2xl text-sm leading-6 text-zinc-200 md:text-lg md:leading-8">
                 Seleccioná el complejo donde querés reservar y seguí al login del panel público.
               </p>
             </div>
 
-            <div className="mb-8 max-w-xl">
+              </div>
+            </div>
+
+            <div className="mb-8 grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
               <div className="relative">
-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-500" />
+                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-300/80" />
                 <input
                   type="text"
                   value={publicSearchTerm}
                   onChange={(e) => setPublicSearchTerm(e.target.value)}
                   placeholder="Buscar complejo o direccion"
-                  className="w-full pl-14 pr-5 py-4 rounded-3xl bg-white/10 border border-white/10 text-white placeholder:text-zinc-500 backdrop-blur-xl focus:outline-none focus:border-sky-400"
+                  className="h-14 w-full rounded-[24px] border border-white/15 bg-black/25 pl-14 pr-5 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35 md:h-16 md:text-base"
                 />
               </div>
-            </div>
-
-            <div className="mb-8 flex justify-end">
-              <Button
-                type="button"
-                onClick={() => { window.location.href = '/admin'; }}
-                className="rounded-2xl px-6 py-3 font-black uppercase tracking-[0.18em] text-xs"
-              >
-                Acceso Admin
-              </Button>
+              <div className="rounded-[24px] border border-white/12 bg-white/10 px-5 py-4 backdrop-blur-xl">
+                <p className="text-[10px] font-black uppercase tracking-[0.28em] text-zinc-300">Complejos activos</p>
+                <p className="mt-2 text-3xl font-black tracking-tight text-white">{filteredPublicClients.length}</p>
+              </div>
             </div>
 
             {isPublicClientsLoading ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, index) => (
-                  <div key={index} className="h-72 rounded-[32px] border border-white/10 bg-white/5 animate-pulse" />
+                  <div key={index} className="h-[360px] rounded-[36px] border border-white/10 bg-white/10 animate-pulse backdrop-blur-xl" />
                 ))}
               </div>
             ) : filteredPublicClients.length === 0 ? (
-              <div className="bg-white/5 border border-white/10 rounded-[32px] p-10 text-center text-zinc-300">
+              <div className="rounded-[36px] border border-white/10 bg-black/30 p-10 text-center text-zinc-200 backdrop-blur-xl">
                 No hay complejos activos disponibles para mostrar.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
                 {filteredPublicClients.map((client) => (
                   <button
                     key={client.id}
                     type="button"
                     onClick={() => handleSelectPublicClient(client)}
-                    className="group text-left rounded-[32px] border border-white/10 bg-white/5 backdrop-blur-xl p-6 hover:bg-white/10 hover:border-sky-400/30 transition-all shadow-2xl"
+                    className="group relative overflow-hidden rounded-[36px] border border-white/12 bg-white/10 p-6 text-left shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1.5 hover:border-emerald-300/45 hover:bg-white/14"
                   >
-                    <div className="flex items-start justify-between gap-4 mb-8">
-                      <div className="w-16 h-16 rounded-[24px] bg-white text-zinc-900 flex items-center justify-center shadow-xl overflow-hidden">
+                    <div className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-emerald-300/14 to-transparent" />
+                      <div className="absolute -right-10 bottom-0 h-40 w-40 rounded-full bg-sky-400/12 blur-3xl" />
+                    </div>
+
+                    <div className="relative z-10 mb-8 flex items-start justify-between gap-4">
+                      <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-[28px] border border-white/15 bg-white/95 text-zinc-900 shadow-[0_18px_40px_rgba(255,255,255,0.12)] sm:h-28 sm:w-28">
                         {client.logo_url ? (
-                          <img src={client.logo_url} alt={client.complex_name || client.name} className="w-full h-full object-cover" />
+                          <img
+                            src={client.logo_url}
+                            alt={getClientDisplayName(client)}
+                            className="h-full w-full object-contain p-3"
+                            loading="lazy"
+                          />
                         ) : (
-                          <Building2 className="w-8 h-8 text-sky-600" />
+                          <div className="flex h-full w-full flex-col items-center justify-center bg-[linear-gradient(135deg,#f8fafc_0%,#dbeafe_45%,#dcfce7_100%)] p-3 text-center">
+                            <span className="text-2xl font-black tracking-[-0.06em] text-slate-900">
+                              {getClientInitials(client)}
+                            </span>
+                            <span className="mt-1 text-[9px] font-black uppercase tracking-[0.24em] text-slate-500">
+                              Sin logo
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <div className="inline-flex items-center gap-2 text-sky-300 text-[10px] font-black uppercase tracking-[0.24em]">
-                        Entrar
-                        <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/20 px-3 py-2 text-[10px] font-black uppercase tracking-[0.24em] text-emerald-200 backdrop-blur-md">
+                        Entrar ahora
+                        <ChevronRight className="w-4 h-4 transition-transform duration-300 group-hover:translate-x-1.5" />
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <h2 className="text-2xl font-black tracking-tight text-white">
-                        {client.complex_name || client.name}
-                      </h2>
-                      <p className="text-sm text-zinc-400 min-h-[2.5rem]">
+                    <div className="relative z-10 flex min-h-[170px] flex-col">
+                      <div className="mb-4">
+                        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.3em] text-zinc-300/80">
+                          Complejo deportivo
+                        </p>
+                        <h2 className="text-2xl font-black tracking-[-0.04em] text-white md:text-[2rem]">
+                          {getClientDisplayName(client)}
+                        </h2>
+                      </div>
+                      <div className="mt-auto space-y-4">
+                        <div className="flex min-h-[72px] items-start gap-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 backdrop-blur-md">
+                          <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Direccion</p>
+                            <p className="mt-1 text-sm leading-6 text-zinc-100">
                         {client.address || 'Complejo habilitado para reservas y acceso público.'}
                       </p>
-                      {client.address && (
-                        <div className="flex items-center gap-2 text-zinc-300 text-sm">
-                          <MapPin className="w-4 h-4 text-sky-400" />
-                          <span>{client.address}</span>
+                          </div>
                         </div>
-                      )}
+
+                        <div className="flex items-center justify-between border-t border-white/10 pt-4">
+                          <span className="text-[11px] font-black uppercase tracking-[0.28em] text-zinc-300">
+                            Reservas online
+                          </span>
+                          <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-xs font-black uppercase tracking-[0.18em] text-slate-900 shadow-lg transition-transform duration-300 group-hover:translate-x-1">
+                            Entrar
+                            <ChevronRight className="h-4 w-4" />
+                          </span>
+                        </div>
+                    </div>
                     </div>
                   </button>
                 ))}

@@ -72,6 +72,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
   const [isPitchScheduleModalOpen, setIsPitchScheduleModalOpen] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   
   const [formData, setFormData] = useState({
@@ -88,19 +89,50 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   useEffect(() => {
     const fetchData = async () => {
       const clientId = user.client_id;
-      const p = await dataService.getPitches(clientId);
-      const b = await dataService.getBookings(clientId);
-      const s = await dataService.getSales(clientId);
-      const prods = await dataService.getProducts(clientId);
-      
-      const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
-      const points = await dataService.getUserPoints(identifier, clientId);
-      
-      setPitches(p);
-      setBookings(b);
-      setSales(s);
-      setProducts(prods);
-      setUserPoints(points);
+      if (!clientId) {
+        setLoadError('No se pudo cargar el portal: falta client_id del complejo seleccionado.');
+        setPitches([]);
+        setBookings([]);
+        return;
+      }
+
+      try {
+        setLoadError(null);
+        const p = await dataService.getPitches(clientId);
+        setPitches(p);
+
+        try {
+          const b = await dataService.getBookings(clientId);
+          setBookings(b);
+        } catch (bookingsError) {
+          console.error('Error loading bookings:', bookingsError);
+          setBookings([]);
+        }
+
+        if (user.role === 'admin') {
+          const [s, prods] = await Promise.all([
+            dataService.getSales(clientId),
+            dataService.getProducts(clientId),
+          ]);
+          setSales(s);
+          setProducts(prods);
+        } else {
+          setSales([]);
+          setProducts([]);
+        }
+
+        try {
+          const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
+          const points = await dataService.getUserPoints(identifier, clientId);
+          setUserPoints(points);
+        } catch (pointsError) {
+          console.error('Error loading user points:', pointsError);
+          setUserPoints(0);
+        }
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+        setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar las canchas del complejo seleccionado.');
+      }
     };
     fetchData();
   }, [user.id, user.phone, user.role, user.client_id]);
@@ -383,6 +415,15 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       fetchWeather(-34.6037, -58.3816);
     }
   }, []);
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-red-50 p-6 text-red-800 shadow-sm">
+        <p className="text-xs font-black uppercase tracking-[0.22em]">Error de carga</p>
+        <p className="mt-2 text-lg font-bold">{loadError}</p>
+      </div>
+    );
+  }
 
   if (user.role === 'client') {
     return (

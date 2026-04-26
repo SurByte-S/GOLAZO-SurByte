@@ -60,6 +60,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
   const [isConfirmCancelOpen, setIsConfirmCancelOpen] = useState(false);
   const [hoveredSlot, setHoveredSlot] = useState<{ hour: number, day: Date, pitch: Pitch } | null>(null);
   const [sharePitchId, setSharePitchId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [bookingTimer, setBookingTimer] = useState<number | null>(null);
@@ -78,24 +79,49 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
   useEffect(() => {
     const fetchData = async () => {
       const clientId = user.client_id;
-      const [fetchedPitches, fetchedBookings, fetchedDeactivated] = await Promise.all([
-        dataService.getPitches(clientId),
-        dataService.getBookings(clientId),
-        dataService.getDeactivatedSlots(clientId)
-      ]);
-      setPitches(fetchedPitches);
-      setBookings(fetchedBookings);
-      setDeactivatedSlots(fetchedDeactivated);
-      
-      if (initialBookingId) {
-        const booking = fetchedBookings.find(bk => bk.id === initialBookingId);
-        if (booking) {
-          setSelectedDate(booking.startTime);
-          setSelectedBooking(booking);
+      if (!clientId) {
+        setLoadError('No se pudo cargar el calendario: falta client_id del complejo seleccionado.');
+        setPitches([]);
+        setBookings([]);
+        setDeactivatedSlots(new Set());
+        return;
+      }
+
+      try {
+        setLoadError(null);
+        const fetchedPitches = await dataService.getPitches(clientId);
+        setPitches(fetchedPitches);
+
+        let fetchedBookings: Booking[] = [];
+        try {
+          fetchedBookings = await dataService.getBookings(clientId);
+          setBookings(fetchedBookings);
+        } catch (bookingsError) {
+          console.error('Error loading bookings:', bookingsError);
+          setBookings([]);
         }
-        if (onClearInitialBooking) {
-          onClearInitialBooking();
+
+        try {
+          const fetchedDeactivated = await dataService.getDeactivatedSlots(clientId);
+          setDeactivatedSlots(fetchedDeactivated);
+        } catch (slotsError) {
+          console.error('Error loading deactivated slots:', slotsError);
+          setDeactivatedSlots(new Set());
         }
+        
+        if (initialBookingId) {
+          const booking = fetchedBookings.find(bk => bk.id === initialBookingId);
+          if (booking) {
+            setSelectedDate(booking.startTime);
+            setSelectedBooking(booking);
+          }
+          if (onClearInitialBooking) {
+            onClearInitialBooking();
+          }
+        }
+      } catch (error) {
+        console.error('Error loading calendar data:', error);
+        setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar las canchas del complejo seleccionado.');
       }
     };
     fetchData();
@@ -252,6 +278,15 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
       reader.readAsDataURL(file);
     }
   };
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-red-50 p-6 text-red-800 shadow-sm">
+        <p className="text-xs font-black uppercase tracking-[0.22em]">Error de carga</p>
+        <p className="mt-2 text-lg font-bold">{loadError}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -46,14 +46,34 @@ export default function BookingsList({ user }: BookingsListProps) {
   const [confirmCancel, setConfirmCancel] = useState<string | null>(null);
   const [selectedBookingForDetail, setSelectedBookingForDetail] = useState<Booking | null>(null);
   const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       const clientId = user.client_id;
-      const p = await dataService.getPitches(clientId);
-      const b = await dataService.getBookings(clientId);
-      setPitches(p);
-      setBookings(b);
+      if (!clientId) {
+        setLoadError('No se pudieron cargar las reservas: falta client_id del complejo seleccionado.');
+        setPitches([]);
+        setBookings([]);
+        return;
+      }
+
+      try {
+        setLoadError(null);
+        const p = await dataService.getPitches(clientId);
+        setPitches(p);
+
+        try {
+          const b = await dataService.getBookings(clientId);
+          setBookings(b);
+        } catch (bookingsError) {
+          console.error('Error loading bookings:', bookingsError);
+          setBookings([]);
+        }
+      } catch (error) {
+        console.error('Error loading bookings list:', error);
+        setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar las canchas del complejo seleccionado.');
+      }
     };
     fetchData();
   }, [user.client_id]);
@@ -381,6 +401,15 @@ export default function BookingsList({ user }: BookingsListProps) {
       </motion.div>
     );
   };
+
+  if (loadError) {
+    return (
+      <div className="mx-auto max-w-3xl rounded-3xl border border-red-200 bg-red-50 p-6 text-red-800 shadow-sm">
+        <p className="text-xs font-black uppercase tracking-[0.22em]">Error de carga</p>
+        <p className="mt-2 text-lg font-bold">{loadError}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-20">
