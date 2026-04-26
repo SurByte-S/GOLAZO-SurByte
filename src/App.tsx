@@ -105,7 +105,7 @@ export default function App() {
         setSelectedPublicClientId(publicClientId);
 
         if (publicClientId && isPublicRoute) {
-          const publicClientConfig = await dataService.getClientConfig(publicClientId);
+          const publicClientConfig = await dataService.getPublicClientConfig(publicClientId);
           setClientConfig(publicClientConfig);
         } else {
           setClientConfig(null);

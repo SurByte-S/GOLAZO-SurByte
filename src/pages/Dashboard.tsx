@@ -56,6 +56,7 @@ interface DashboardProps {
 }
 
 export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig }: DashboardProps) {
+  const isPublicPortalUser = user.role === 'client' && user.id.startsWith('public-player:');
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -77,6 +78,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   const [formData, setFormData] = useState({
     clientName: user.role === 'client' ? (localStorage.getItem('golazo_guest_name') || '') : '',
     clientPhone: user.role === 'client' ? (localStorage.getItem('golazo_guest_phone') || '') : '',
+    notes: '',
     receipt: null as string | null,
     depositAmount: '',
     paymentMethod: 'transferencia' as 'transferencia' | 'mercadopago',
@@ -88,6 +90,16 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   useEffect(() => {
     const fetchData = async () => {
       const clientId = user.client_id;
+      if (isPublicPortalUser) {
+        const publicPitches = await dataService.getPublicPitches(clientId);
+        setPitches(publicPitches);
+        setBookings([]);
+        setSales([]);
+        setProducts([]);
+        setUserPoints(0);
+        return;
+      }
+
       const p = await dataService.getPitches(clientId);
       const b = await dataService.getBookings(clientId);
       const s = await dataService.getSales(clientId);
@@ -103,7 +115,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       setUserPoints(points);
     };
     fetchData();
-  }, [user.id, user.phone, user.role, user.client_id]);
+  }, [isPublicPortalUser, user.id, user.phone, user.role, user.client_id]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -129,7 +141,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
     e.preventDefault();
     if (!selectedPitch || !selectedTime) return;
 
-    if (formData.paymentMethod === 'transferencia' && !formData.receipt) {
+    if (!isPublicPortalUser && formData.paymentMethod === 'transferencia' && !formData.receipt) {
       alert('Por favor, carga el comprobante de la seña.');
       return;
     }
@@ -139,7 +151,60 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
     startTime.setHours(h, m, 0, 0);
     const endTime = addHours(startTime, 1);
 
+    const persistGuestInfo = () => {
+      if (user.role === 'client') {
+        localStorage.setItem('golazo_guest_name', formData.clientName);
+        localStorage.setItem('golazo_guest_phone', formData.clientPhone);
+        window.dispatchEvent(new Event('guest_info_updated'));
+      }
+    };
+
+    const resetBookingForm = () => {
+      setFormData({
+        clientName: user.role === 'client' ? formData.clientName : '',
+        clientPhone: user.role === 'client' ? formData.clientPhone : '',
+        notes: '',
+        receipt: null,
+        depositAmount: '',
+        paymentMethod: 'transferencia',
+        paymentUrl: ''
+      });
+    };
+
     try {
+      if (isPublicPortalUser) {
+        const publicClientSlug = clientConfig?.slug || selectedPitch.client_slug;
+
+        if (!publicClientSlug) {
+          throw new Error('No se pudo identificar el complejo para esta reserva pública.');
+        }
+
+        const result = await dataService.createPublicBooking({
+          client_slug: publicClientSlug,
+          pitch_id: selectedPitch.id,
+          start_time: startTime.toISOString(),
+          client_name: formData.clientName.trim(),
+          client_phone: formData.clientPhone.trim(),
+          notes: formData.notes.trim(),
+        });
+
+        persistGuestInfo();
+        setIsBookingModalOpen(false);
+        resetBookingForm();
+
+        if ((result.booking.status || '').toLowerCase() === 'pending') {
+          toast.success('Reserva pendiente de confirmación', {
+            description: result.message || 'Te avisaremos cuando el complejo la confirme.',
+          });
+        } else {
+          toast.success('Reserva confirmada', {
+            description: result.message || 'Tu reserva fue creada correctamente.',
+          });
+        }
+
+        return;
+      }
+
       await api.addBooking({
         pitchId: selectedPitch.id,
         userId: user.id,
@@ -153,13 +218,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         paymentUrl: formData.paymentMethod === 'mercadopago' ? formData.paymentUrl : undefined
       });
       
-      // Save client info to localStorage for future use
-      if (user.role === 'client') {
-        localStorage.setItem('golazo_guest_name', formData.clientName);
-        localStorage.setItem('golazo_guest_phone', formData.clientPhone);
-        // Dispatch custom event to update App.tsx state if needed
-        window.dispatchEvent(new Event('guest_info_updated'));
-      }
+      persistGuestInfo();
 
       const updatedBookings = await dataService.getBookings(user.client_id);
       setBookings(updatedBookings);
@@ -167,14 +226,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
       setUserPoints(updatedPoints);
       setIsBookingModalOpen(false);
-      setFormData({ 
-        clientName: user.role === 'client' ? formData.clientName : '', 
-        clientPhone: user.role === 'client' ? formData.clientPhone : '', 
-        receipt: null, 
-        depositAmount: '',
-        paymentMethod: 'transferencia',
-        paymentUrl: ''
-      });
+      resetBookingForm();
       
       toast.success('¡Reserva confirmada!', {
         description: '¡Sigue jugando para sumar más puntos en el ranking!'
@@ -185,12 +237,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           icon: '⚠️',
         });
         
-        // Save to localStorage
-        if (user.role === 'client') {
-          localStorage.setItem('golazo_guest_name', formData.clientName);
-          localStorage.setItem('golazo_guest_phone', formData.clientPhone);
-          window.dispatchEvent(new Event('guest_info_updated'));
-        }
+        persistGuestInfo();
 
         const updatedBookings = await dataService.getBookings(user.client_id);
         setBookings(updatedBookings);
@@ -198,16 +245,23 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
         setUserPoints(updatedPoints);
         setIsBookingModalOpen(false);
-        setFormData({ 
-          clientName: user.role === 'client' ? formData.clientName : '', 
-          clientPhone: user.role === 'client' ? formData.clientPhone : '', 
-          receipt: null, 
-          depositAmount: '',
-          paymentMethod: 'transferencia',
-          paymentUrl: ''
-        });
+        resetBookingForm();
       } else {
-        toast.error(error.message);
+        if (isPublicPortalUser) {
+          const errorCode = typeof error?.code === 'string' ? error.code : '';
+          const publicMessages: Record<string, string> = {
+            validation_error: 'Revisá los datos ingresados e intentá nuevamente.',
+            past_booking_not_allowed: 'No podés reservar un horario pasado.',
+            client_not_found: 'No encontramos el complejo seleccionado.',
+            client_not_publicly_bookable: 'Este complejo no acepta reservas públicas en este momento.',
+            pitch_not_available: 'La cancha seleccionada no está disponible para reservas públicas.',
+            slot_occupied: 'Ese horario ya no está disponible. Elegí otro turno.',
+          };
+
+          toast.error(publicMessages[errorCode] || error.message || 'No se pudo crear la reserva pública.');
+        } else {
+          toast.error(error.message);
+        }
       }
     }
   };
@@ -872,6 +926,21 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               </div>
             </div>
 
+            {isPublicPortalUser && (
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-zinc-700 ml-1">Notas para el complejo</label>
+                <textarea
+                  placeholder="Opcional: comentarios para la reserva"
+                  className="w-full px-4 py-4 bg-zinc-50 border border-zinc-200 rounded-2xl focus:ring-2 focus:ring-sky-500 outline-none transition-all text-zinc-900 min-h-24 resize-none"
+                  value={formData.notes}
+                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
+                />
+              </div>
+            )}
+
+            {!isPublicPortalUser && (
+              <>
+
             <div className="space-y-2">
               <label className="text-sm font-bold text-zinc-700 ml-1">Monto de la seña</label>
               <div className="relative">
@@ -991,6 +1060,8 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                   El pago se realiza en la cancha antes del turno
                 </p>
               </div>
+            )}
+              </>
             )}
           </div>
 
