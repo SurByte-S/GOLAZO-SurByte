@@ -31,7 +31,7 @@ import { Modal } from '../components/Modal';
 import { ConfirmModal } from '../components/ConfirmModal';
 import { Badge } from '../components/Badge';
 import { dataService, api } from '../services/dataService';
-import { Pitch, Product, AuditLog } from '../types';
+import { Pitch, Product, AuditLog, User } from '../types';
 import { cn } from '../lib/utils';
 import { toast } from 'sonner';
 
@@ -91,7 +91,7 @@ export default function Admin({ onLogout }: AdminProps) {
 
   const [productForm, setProductForm] = useState(defaultProductForm);
 
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     dataService.getCurrentUser().then(setUser);

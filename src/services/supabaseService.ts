@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { Pitch, Booking, Product, Sale, User, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus } from '../types';
+import { getSupabaseAnonKey, getSupabaseUrl, supabase } from '../lib/supabase';
+import { Pitch, Booking, Product, Sale, User, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus, Client } from '../types';
 import imageCompression from 'browser-image-compression';
 import { PUBLIC_PORTAL_CLIENTS } from './publicPortalClients';
 
@@ -87,6 +87,20 @@ const normalizeLegacyAuditLog = (row: any): AuditLog => ({
   client_name: null,
 });
 
+export class PublicBookingError extends Error {
+  code: string;
+  status: number;
+  details?: unknown;
+
+  constructor(code: string, message: string, status: number, details?: unknown) {
+    super(message);
+    this.name = 'PublicBookingError';
+    this.code = code;
+    this.status = status;
+    this.details = details;
+  }
+}
+
 const resolveAuditActor = async () => {
   const {
     data: { user },
@@ -124,34 +138,155 @@ const resolveAuditActor = async () => {
 export const supabaseService = {
   getPublicClients: async () => {
     log('Fetching public clients catalog...');
-
-    const nowIso = new Date().toISOString();
     const { data, error } = await supabase
-      .from('clients')
-      .select('id, name, complex_name, address, status, expires_at, created_at, enable_ranking, enable_sales, enable_reservations, enable_statistics, features')
-      .eq('status', 'active')
-      .or(`expires_at.is.null,expires_at.gte.${nowIso}`)
-      .order('complex_name', { ascending: true });
+      .from('public_clients_catalog_v1')
+      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics')
+      .order('display_name', { ascending: true });
 
     if (error) {
-      logError('Error fetching public clients catalog, trying minimal fallback', error);
-
-      const { data: fallbackData, error: fallbackError } = await supabase
-        .from('clients')
-        .select('id, name, complex_name, address, status, expires_at, created_at')
-        .eq('status', 'active')
-        .or(`expires_at.is.null,expires_at.gte.${nowIso}`)
-        .order('complex_name', { ascending: true });
-
-      if (fallbackError) {
-        logError('Error fetching public clients catalog fallback', fallbackError);
-        return PUBLIC_PORTAL_CLIENTS;
-      }
-
-      return fallbackData && fallbackData.length > 0 ? (fallbackData || []) as any[] : PUBLIC_PORTAL_CLIENTS;
+      logError('Error fetching public clients catalog', error);
+      throw error;
     }
 
-    return data && data.length > 0 ? (data || []) as any[] : PUBLIC_PORTAL_CLIENTS;
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.display_name,
+      complex_name: row.display_name,
+      slug: row.slug || undefined,
+      description: row.description || undefined,
+      address: row.address || undefined,
+      phone: row.phone || undefined,
+      status: 'active',
+      expires_at: null,
+      enable_ranking: row.enable_ranking ?? true,
+      enable_sales: row.enable_sales ?? true,
+      enable_reservations: row.enable_reservations ?? true,
+      enable_statistics: row.enable_statistics ?? true,
+      features: {
+        reservas: row.enable_reservations ?? true,
+        ventas: row.enable_sales ?? true,
+        ranking: row.enable_ranking ?? true,
+        estadisticas: row.enable_statistics ?? true,
+      },
+      created_at: '',
+    })) as Client[];
+  },
+
+  getPublicClientConfig: async (clientId: string) => {
+    log('Fetching public client config...', { clientId });
+
+    const { data, error } = await supabase
+      .from('public_clients_catalog_v1')
+      .select('id, slug, display_name, description, address, phone, enable_ranking, enable_sales, enable_reservations, enable_statistics')
+      .eq('id', clientId)
+      .maybeSingle();
+
+    if (error) {
+      logError('Error fetching public client config', error);
+      throw error;
+    }
+
+    if (!data) return null;
+
+    return {
+      id: data.id,
+      name: data.display_name,
+      complex_name: data.display_name,
+      slug: data.slug || undefined,
+      description: data.description || undefined,
+      address: data.address || undefined,
+      phone: data.phone || undefined,
+      status: 'active',
+      expires_at: null,
+      enable_ranking: data.enable_ranking ?? true,
+      enable_sales: data.enable_sales ?? true,
+      enable_reservations: data.enable_reservations ?? true,
+      enable_statistics: data.enable_statistics ?? true,
+      features: {
+        reservas: data.enable_reservations ?? true,
+        ventas: data.enable_sales ?? true,
+        ranking: data.enable_ranking ?? true,
+        estadisticas: data.enable_statistics ?? true,
+      },
+      created_at: '',
+    } as Client;
+  },
+
+  getPublicPitches: async (clientId?: string) => {
+    log('Fetching public pitches...', { clientId });
+
+    let query = supabase
+      .from('public_pitches_catalog_v1')
+      .select('id, client_id, client_slug, client_display_name, name, type, price')
+      .order('name', { ascending: true });
+
+    if (clientId) {
+      query = query.eq('client_id', clientId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      logError('Error fetching public pitches', error);
+      throw error;
+    }
+
+    return (data || []).map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      type: row.type,
+      price: row.price,
+      active: true,
+      client_id: row.client_id,
+      client_slug: row.client_slug || undefined,
+    })) as Pitch[];
+  },
+
+  createPublicBooking: async (payload: {
+    client_slug: string;
+    pitch_id: string;
+    start_time: string;
+    client_name: string;
+    client_phone: string;
+    notes?: string;
+  }) => {
+    log('Creating public booking via Edge Function...', payload);
+
+    const response = await fetch(`${getSupabaseUrl()}/functions/v1/public-create-booking`, {
+      method: 'POST',
+      headers: {
+        apikey: getSupabaseAnonKey(),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const responseBody = await response.json().catch(() => null);
+
+    if (!response.ok || !responseBody?.success) {
+      const error = responseBody?.error || {};
+      throw new PublicBookingError(
+        error.code || 'public_booking_failed',
+        error.message || 'No se pudo crear la reserva pública.',
+        response.status,
+        error.details,
+      );
+    }
+
+    return responseBody.data as {
+      booking: {
+        id: string;
+        client_id: string;
+        pitch_id: string;
+        client_name: string;
+        client_phone: string;
+        start_time: string;
+        end_time: string;
+        status: string;
+        created_at: string;
+      };
+      message?: string;
+    };
   },
 
   // Test Connection

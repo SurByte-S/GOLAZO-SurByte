@@ -205,6 +205,18 @@ export const dataService = {
     const now = new Date();
     return clients.filter((client) => client.status === 'active' && (!client.expires_at || new Date(client.expires_at) >= now));
   },
+  getPublicClientConfig: async (clientId?: string) => {
+    if (!clientId) {
+      return null;
+    }
+
+    if (isSupabaseConfigured()) {
+      return await supabaseService.getPublicClientConfig(clientId);
+    }
+
+    const clients = getStorage<Client[]>('golazo_public_clients', []);
+    return clients.find((client) => client.id === clientId) || null;
+  },
   getClientConfig: async (clientId?: string) => {
     if (!clientId) {
       return null;
@@ -249,11 +261,33 @@ export const dataService = {
     return getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES)
       .filter((pitch) => pitch.active && (!clientId || pitch.client_id === clientId));
   },
+  getPublicPitches: async (clientId?: string) => {
+    if (isSupabaseConfigured()) {
+      return await supabaseService.getPublicPitches(clientId);
+    }
+
+    const pitches = getStorage<Pitch[]>('golazo_pitches', MOCK_PITCHES);
+    return clientId ? pitches.filter((pitch) => pitch.client_id === clientId && pitch.active !== false) : pitches;
+  },
   savePitches: async (pitches: Pitch[]) => {
     if (isSupabaseConfigured()) {
       // Typically handled by individual add/update/delete calls in Supabase
     }
     setStorage('golazo_pitches', pitches);
+  },
+  createPublicBooking: async (payload: {
+    client_slug: string;
+    pitch_id: string;
+    start_time: string;
+    client_name: string;
+    client_phone: string;
+    notes?: string;
+  }) => {
+    if (isSupabaseConfigured()) {
+      return await supabaseService.createPublicBooking(payload);
+    }
+
+    throw new Error('La reserva pública requiere Supabase configurado.');
   },
   uploadPitchImage: async (file: File, pitchId: string, clientId?: string) => {
     if (isSupabaseConfigured()) {

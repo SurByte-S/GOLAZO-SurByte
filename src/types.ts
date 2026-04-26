@@ -28,6 +28,7 @@ export interface Pitch {
   active: boolean;
   image_url?: string;
   client_id?: string;
+  client_slug?: string;
 }
 
 export interface Booking {
@@ -132,6 +133,7 @@ export interface Client {
   id: string;
   name: string;
   complex_name?: string;
+  slug?: string;
   logo_url?: string | null;
   phone?: string;
   address?: string;
@@ -144,6 +146,7 @@ export interface Client {
   ranking_reset_date?: string | null;
   created_at: string;
   features?: Record<string, boolean>;
+  description?: string;
 }
 
 export type PitchStatus = 'available' | 'busy' | 'reserved';
