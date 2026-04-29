@@ -256,7 +256,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
       
       toast.success('¡Reserva confirmada!', {
         description: isPromo 
-          ? `¡Sumaste +${points} puntos por horario promocional! 🔥`
+          ? `¡Sumaste +${points} puntos por horario promocional!`
           : `¡Sumaste +${points} puntos!`,
       });
     } catch (error: any) {

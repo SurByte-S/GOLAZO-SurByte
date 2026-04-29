@@ -223,7 +223,7 @@ export default function SuperAdminSaaS() {
 
   const handleLoginAsClient = (client: Client) => {
     dataService.setSelectedClientContext(client.id);
-    window.location.href = '/dashboard';
+    window.location.href = '/admin';
   };
 
   // User creation state

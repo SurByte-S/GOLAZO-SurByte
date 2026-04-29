@@ -102,7 +102,7 @@ export default function RankingPage({ user }: RankingPageProps) {
                 <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10 inline-flex items-center gap-2">
                   <span className="text-xs font-bold">
                     Última reserva: <span className="text-yellow-300">+{lastPoints.points} puntos</span>
-                    {lastPoints.isPromo && " 🔥"}
+                    {lastPoints.isPromo && " promo"}
                   </span>
                 </div>
               )}
@@ -237,7 +237,7 @@ export default function RankingPage({ user }: RankingPageProps) {
                             index === 2 ? "bg-gradient-to-br from-orange-300 to-orange-500 text-white shadow-orange-500/20" :
                             "bg-zinc-50 text-zinc-400"
                           )}>
-                            {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
+                            {index + 1}
                           </div>
                           <div className="flex items-center gap-2 sm:gap-4">
                             <div className={cn(

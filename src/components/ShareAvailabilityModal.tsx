@@ -134,7 +134,7 @@ export function ShareAvailabilityModal({ isOpen, onClose, pitch, pitches, onPitc
           const y = startY + (row * lineHeight);
           
           const timeStr = `${hour.toString().padStart(2, '0')}:00`;
-          ctx.fillText(`⚽ ${timeStr}`, x, y);
+          ctx.fillText(`Golazo ${timeStr}`, x, y);
         });
       }
 
@@ -177,7 +177,7 @@ export function ShareAvailabilityModal({ isOpen, onClose, pitch, pitches, onPitc
         await navigator.share({
           files: [file],
           title: 'Horarios Disponibles',
-          text: `¡Mirá los horarios disponibles para ${pitch?.name}! ⚽`,
+          text: `¡Mirá los horarios disponibles para ${pitch?.name}!`,
         });
       } else {
         // Fallback if Web Share API is not supported
@@ -191,7 +191,7 @@ export function ShareAvailabilityModal({ isOpen, onClose, pitch, pitches, onPitc
   const handleShareLink = () => {
     if (!pitch) return;
     const url = `https://golazo.app/reservar/${pitch.id}`;
-    const text = encodeURIComponent(`Reservá tu turno acá ⚽ ${url}`);
+    const text = encodeURIComponent(`Reservá tu turno acá: ${url}`);
     window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
