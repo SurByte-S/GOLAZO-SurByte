@@ -43,6 +43,7 @@ import { Button } from './components/Button';
 import { Modal } from './components/Modal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { cn } from './lib/utils';
+import { getEffectiveClientId } from './lib/tenant';
 import { dataService } from './services/dataService';
 import { User, Client } from './types';
 import { supabase, checkSupabaseConnection } from './lib/supabase';
@@ -64,7 +65,7 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(dataService.getSelectedClientId());
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [customLogo, setCustomLogo] = useState<string | null>((selectedClientId ? localStorage.getItem('golazo_client_logo_' + selectedClientId) : localStorage.getItem('golazo_custom_logo')));
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
@@ -98,12 +99,11 @@ export default function App() {
 
     try {
       const currentUser = await dataService.getCurrentUser();
-      const nextSelectedClientId = dataService.getSelectedClientId();
 
       if (!currentUser) {
         const publicClientId = dataService.getPublicClientSelectionId();
         setUser(null);
-        setSelectedClientId(nextSelectedClientId);
+        setSelectedClientId(null);
         setSelectedPublicClientId(publicClientId);
 
         if (publicClientId && isPublicRoute) {
@@ -139,14 +139,14 @@ export default function App() {
       }
 
       setUser(currentUser);
-      setSelectedClientId(nextSelectedClientId);
+      setSelectedClientId(currentUser.client_id || null);
 
       if (!isSuperAdminRoute && currentUser.client_id) {
         dataService.setPublicClientSelection(currentUser.client_id);
         setSelectedPublicClientId(currentUser.client_id);
       }
 
-      const targetClientId = currentUser.client_id;
+      const targetClientId = getEffectiveClientId(currentUser);
       if (targetClientId) {
         const data = await dataService.getClientConfig(targetClientId);
         setClientConfig(data);
@@ -233,7 +233,7 @@ export default function App() {
 
       setTimeout(() => {
         setUser(newUser);
-        setSelectedClientId(dataService.getSelectedClientId());
+        setSelectedClientId(newUser.client_id || null);
         setShowSplash(false);
       }, 2500);
     } catch (error) {
@@ -291,7 +291,7 @@ export default function App() {
     { id: 'admin', label: 'Configuración', icon: Settings, roles: ['admin'] },
   ];
 
-  const navigationRole = activeUser?.role === 'superadmin' && selectedClientId ? 'admin' : activeUser?.role || '';
+  const navigationRole = activeUser?.role || '';
 
   const filteredNavItems = navItems.filter(item => {
     if (!item.roles.includes(navigationRole)) return false;

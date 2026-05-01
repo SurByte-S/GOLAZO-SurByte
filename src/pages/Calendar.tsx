@@ -39,6 +39,7 @@ import { ConfirmModal } from '../components/ConfirmModal';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface CalendarProps {
   user: UserType;
@@ -49,6 +50,7 @@ interface CalendarProps {
 import { ShareAvailabilityModal } from '../components/ShareAvailabilityModal';
 
 export default function CalendarPage({ user, initialBookingId, onClearInitialBooking }: CalendarProps) {
+  const effectiveClientId = getEffectiveClientId(user);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -78,7 +80,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
 
   useEffect(() => {
     const fetchData = async () => {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       if (!clientId) {
         setLoadError('No se pudo cargar el calendario: falta client_id del complejo seleccionado.');
         setPitches([]);
@@ -125,7 +127,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
       }
     };
     fetchData();
-  }, [initialBookingId, user.client_id]);
+  }, [effectiveClientId, initialBookingId]);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -228,7 +230,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
     try {
       const isPromo = h >= 10 && h <= 16;
       const points = isPromo ? 1.5 : 1;
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
 
       await api.addBooking({
         pitchId: bookingData.pitch.id,
@@ -241,7 +243,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
         receiptUrl: bookingData.receipt || undefined,
         depositAmount: Number(bookingData.depositAmount) || 0,
         paymentUrl: bookingData.paymentMethod === 'mercadopago' ? bookingData.paymentUrl : undefined
-      });
+      }, clientId || undefined);
       
       const updatedBookings = await dataService.getBookings(clientId);
       setBookings(updatedBookings);
@@ -1247,8 +1249,8 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                       selectedBooking.isPaid ? "border-emerald-200 text-emerald-600 hover:bg-emerald-50" : "bg-emerald-600 hover:bg-emerald-700 text-white"
                     )}
                     onClick={async () => {
-                      await api.toggleBookingPayment(selectedBooking.id, user.client_id);
-                      const updatedBookings = await dataService.getBookings(user.client_id);
+                      await api.toggleBookingPayment(selectedBooking.id, effectiveClientId || undefined);
+                      const updatedBookings = await dataService.getBookings(effectiveClientId);
                       setBookings(updatedBookings);
                       setSelectedBooking(prev => prev ? { ...prev, isPaid: !prev.isPaid } : null);
                       toast.success(selectedBooking.isPaid ? 'Pago cancelado' : '¡Pago registrado!');
@@ -1276,8 +1278,8 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
         onClose={() => setIsConfirmCancelOpen(false)}
         onConfirm={async () => {
           if (selectedBooking) {
-            await api.cancelBooking(selectedBooking.id, user.client_id);
-            const updatedBookings = await dataService.getBookings(user.client_id);
+            await api.cancelBooking(selectedBooking.id, effectiveClientId || undefined);
+            const updatedBookings = await dataService.getBookings(effectiveClientId);
             setBookings(updatedBookings);
             setSelectedBooking(null);
           }

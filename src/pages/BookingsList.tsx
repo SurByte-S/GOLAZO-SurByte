@@ -33,12 +33,14 @@ import { Badge } from '../components/Badge';
 import { dataService, api } from '../services/dataService';
 import { Booking, Pitch, User, BookingStatus } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface BookingsListProps {
   user: User;
 }
 
 export default function BookingsList({ user }: BookingsListProps) {
+  const effectiveClientId = getEffectiveClientId(user);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -50,7 +52,7 @@ export default function BookingsList({ user }: BookingsListProps) {
 
   useEffect(() => {
     const fetchData = async () => {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       if (!clientId) {
         setLoadError('No se pudieron cargar las reservas: falta client_id del complejo seleccionado.');
         setPitches([]);
@@ -76,7 +78,7 @@ export default function BookingsList({ user }: BookingsListProps) {
       }
     };
     fetchData();
-  }, [user.client_id]);
+  }, [effectiveClientId]);
 
   const userBookingCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -143,7 +145,7 @@ export default function BookingsList({ user }: BookingsListProps) {
 
   const handleStatusUpdate = async (id: string, status: BookingStatus) => {
     try {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       await api.updateBookingStatus(id, status, clientId);
       const b = await dataService.getBookings(clientId);
       setBookings(b);
@@ -154,7 +156,7 @@ export default function BookingsList({ user }: BookingsListProps) {
 
   const handleTogglePayment = async (id: string) => {
     try {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       await api.toggleBookingPayment(id, clientId);
       const b = await dataService.getBookings(clientId);
       setBookings(b);
@@ -166,7 +168,7 @@ export default function BookingsList({ user }: BookingsListProps) {
   const executeCancel = async () => {
     if (!confirmCancel) return;
     try {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       await api.cancelBooking(confirmCancel, clientId);
       const b = await dataService.getBookings(clientId);
       setBookings(b);

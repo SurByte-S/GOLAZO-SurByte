@@ -6,19 +6,21 @@ import { Badge } from '../components/Badge';
 import { dataService } from '../services/dataService';
 import { User } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface RankingPageProps {
   user: User;
 }
 
 export default function RankingPage({ user }: RankingPageProps) {
+  const effectiveClientId = getEffectiveClientId(user);
   const [ranking, setRanking] = useState<{ id: string, name: string, points: number }[]>([]);
   const [userPoints, setUserPoints] = useState(0);
   const [lastPoints, setLastPoints] = useState<{ points: number, isPromo: boolean } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       const currentRanking = await dataService.getRanking(clientId);
       setRanking(currentRanking);
       const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
@@ -32,7 +34,7 @@ export default function RankingPage({ user }: RankingPageProps) {
       }
     };
     fetchData();
-  }, [user.id, user.phone, user.role, user.client_id]);
+  }, [effectiveClientId, user.id, user.phone, user.role]);
 
   const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
   const userPosition = ranking.findIndex(p => p.id === identifier) + 1;

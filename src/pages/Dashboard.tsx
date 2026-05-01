@@ -46,6 +46,7 @@ import { NotificationsPanel } from '../components/NotificationsPanel';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType, Sale, Product, Client } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface DashboardProps {
   user: UserType;
@@ -57,6 +58,7 @@ interface DashboardProps {
 
 export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig }: DashboardProps) {
   const isPublicPortalUser = user.role === 'client' && user.id.startsWith('public-player:');
+  const effectiveClientId = getEffectiveClientId(user);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -90,7 +92,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
 
   useEffect(() => {
     const fetchData = async () => {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       if (isPublicPortalUser) {
         const publicPitches = await dataService.getPublicPitches(clientId);
         setPitches(publicPitches);
@@ -116,7 +118,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       setUserPoints(points);
     };
     fetchData();
-  }, [isPublicPortalUser, user.id, user.phone, user.role, user.client_id]);
+  }, [effectiveClientId, isPublicPortalUser, user.id, user.phone, user.role]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -217,14 +219,14 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         receiptUrl: formData.receipt || undefined,
         depositAmount: Number(formData.depositAmount) || 0,
         paymentUrl: formData.paymentMethod === 'mercadopago' ? formData.paymentUrl : undefined
-      });
+      }, effectiveClientId || undefined);
       
       persistGuestInfo();
 
-      const updatedBookings = await dataService.getBookings(user.client_id);
+      const updatedBookings = await dataService.getBookings(effectiveClientId);
       setBookings(updatedBookings);
       const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-      const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
+      const updatedPoints = await dataService.getUserPoints(identifier, effectiveClientId);
       setUserPoints(updatedPoints);
       setIsBookingModalOpen(false);
       resetBookingForm();
@@ -240,10 +242,10 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         
         persistGuestInfo();
 
-        const updatedBookings = await dataService.getBookings(user.client_id);
+        const updatedBookings = await dataService.getBookings(effectiveClientId);
         setBookings(updatedBookings);
         const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-        const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
+        const updatedPoints = await dataService.getUserPoints(identifier, effectiveClientId);
         setUserPoints(updatedPoints);
         setIsBookingModalOpen(false);
         resetBookingForm();
@@ -545,7 +547,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               } else {
                 let booking = bookings.find(b => b.id === bookingId);
                 if (!booking) {
-                  const latestBookings = await dataService.getBookings(user.client_id);
+                  const latestBookings = await dataService.getBookings(effectiveClientId);
                   setBookings(latestBookings);
                   booking = latestBookings.find(b => b.id === bookingId);
                 }
@@ -1224,8 +1226,8 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                 className="flex-1 py-4 rounded-2xl font-black"
                 onClick={async () => {
                   try {
-                    await api.cancelBooking(selectedBooking.id, user.client_id);
-                    const updatedBookings = await dataService.getBookings(user.client_id);
+                    await api.cancelBooking(selectedBooking.id, effectiveClientId || undefined);
+                    const updatedBookings = await dataService.getBookings(effectiveClientId);
                     setBookings(updatedBookings);
                     setIsBookingDetailModalOpen(false);
                   } catch (error) {
