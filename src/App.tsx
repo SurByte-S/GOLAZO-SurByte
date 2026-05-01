@@ -265,8 +265,10 @@ export default function App() {
   const handleBackToClientSelector = () => {
     dataService.clearPublicClientSelection();
     setSelectedPublicClientId(null);
+    setClientConfig(null);
     setLoginPassword('');
     setLoginError(null);
+    setCurrentPage('dashboard');
   };
 
   const publicPortalUser: User | null =
@@ -305,6 +307,14 @@ export default function App() {
   const bgImage = PUBLIC_SELECTION_BACKGROUND;
   const selectedPublicClient = publicClients.find((client) => client.id === selectedPublicClientId) || null;
   const getClientDisplayName = (client: Client) => client.complex_name?.trim() || client.name?.trim() || 'Complejo';
+  const isPublicPortalActive = !!publicPortalUser && isPublicRoute;
+  const publicPortalClientName = clientConfig?.complex_name || clientConfig?.name || (selectedPublicClient ? getClientDisplayName(selectedPublicClient) : 'Complejo');
+  const publicPortalLogo = clientConfig?.logo_url || selectedPublicClient?.logo_url || customLogo;
+  const getPublicNavLabel = (item: typeof navItems[number]) => {
+    if (item.id === 'calendar') return 'Reservar';
+    if (item.id === 'bookings') return 'Mis turnos';
+    return item.label;
+  };
   const getClientInitials = (client: Client) =>
     getClientDisplayName(client)
       .split(/\s+/)
@@ -665,34 +675,154 @@ export default function App() {
     );
   }
 
+  const renderDashboard = () => (
+    <Dashboard
+      user={activeUser}
+      onNavigate={(page) => setCurrentPage(page as Page)}
+      onLogout={isPublicPortalActive ? handleBackToClientSelector : handleLogout}
+      onNotificationClick={(id) => {
+        setSelectedBookingId(id);
+        setCurrentPage('calendar');
+      }}
+      clientConfig={clientConfig}
+    />
+  );
+
   const renderPage = () => {
     if (!activeUser) return null;
     const isAdmin = activeUser.role === 'admin' || activeUser.role === 'superadmin';
     
     switch (currentPage) {
-      case 'dashboard': return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} onNotificationClick={(id) => { setSelectedBookingId(id); setCurrentPage('calendar'); }} clientConfig={clientConfig} />;
+      case 'dashboard': return renderDashboard();
       case 'bookings': 
-        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
         return <BookingsList user={activeUser} />;
       case 'calendar': 
-        if (clientConfig && clientConfig.features?.reservas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.reservas === false) return renderDashboard();
         return <CalendarPage user={activeUser} initialBookingId={selectedBookingId} onClearInitialBooking={() => setSelectedBookingId(null)} />;
       case 'ranking': 
-        if (clientConfig && clientConfig.features?.ranking === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.ranking === false) return renderDashboard();
         return <RankingPage user={activeUser} />;
       case 'stats': 
-        if (clientConfig && clientConfig.features?.estadisticas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return isAdmin ? <SmartStats /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.estadisticas === false) return renderDashboard();
+        return isAdmin ? <SmartStats /> : renderDashboard();
       case 'sales': 
-        if (clientConfig && clientConfig.features?.ventas === false) return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-        return isAdmin ? <SalesPage /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
-      default: return <Dashboard user={activeUser} onNavigate={(page) => setCurrentPage(page as Page)} clientConfig={clientConfig} />;
+        if (clientConfig && clientConfig.features?.ventas === false) return renderDashboard();
+        return isAdmin ? <SalesPage /> : renderDashboard();
+      case 'admin': return isAdmin ? <Admin onLogout={handleLogout} /> : renderDashboard();
+      default: return renderDashboard();
     }
   };
 
   if (!activeUser) {
     return null;
+  }
+
+  if (isPublicPortalActive) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white relative overflow-x-hidden">
+        <div
+          className="fixed inset-0"
+          style={{
+            backgroundImage: `url(${PUBLIC_SELECTION_BACKGROUND})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+          }}
+        />
+        <div className="fixed inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.62)_0%,rgba(2,6,23,0.78)_42%,rgba(2,6,23,0.94)_100%)]" />
+
+        <div className="relative z-10 flex min-h-screen flex-col">
+          <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/55 px-4 py-3 backdrop-blur-2xl sm:px-6 lg:px-10">
+            <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-white shadow-xl sm:h-16 sm:w-16">
+                  {publicPortalLogo ? (
+                    <img src={publicPortalLogo} alt={publicPortalClientName} className="h-full w-full object-contain p-2" />
+                  ) : selectedPublicClient ? (
+                    <span className="text-lg font-black tracking-[-0.05em] text-slate-900">
+                      {getClientInitials(selectedPublicClient)}
+                    </span>
+                  ) : (
+                    <ArgentinaLogo size="sm" showText={false} />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.28em] text-emerald-200">Reservas Golazo</p>
+                  <h1 className="truncate text-xl font-black tracking-[-0.04em] text-white sm:text-2xl">
+                    {publicPortalClientName}
+                  </h1>
+                </div>
+              </div>
+
+              <div className="hidden items-center gap-2 lg:flex">
+                {filteredNavItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setCurrentPage(item.id as Page)}
+                    className={cn(
+                      "inline-flex h-12 items-center gap-2 rounded-2xl px-4 text-xs font-black uppercase tracking-[0.18em] transition-all",
+                      currentPage === item.id
+                        ? "bg-white text-slate-950 shadow-xl"
+                        : "border border-white/10 bg-white/10 text-white/75 hover:bg-white/15 hover:text-white",
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {getPublicNavLabel(item)}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={handleBackToClientSelector}
+                className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 text-[10px] font-black uppercase tracking-[0.18em] text-white backdrop-blur-xl transition-all hover:bg-white/15 sm:px-4"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                <span className="hidden sm:inline">Cambiar complejo</span>
+              </button>
+            </div>
+          </header>
+
+          <main className="relative z-10 mx-auto w-full max-w-7xl flex-1 px-4 pb-28 pt-5 sm:px-6 sm:pt-8 lg:px-10 lg:pb-10">
+            <motion.div
+              key={currentPage}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+              className="rounded-[32px] border border-white/10 bg-white/95 p-3 text-zinc-900 shadow-[0_32px_120px_rgba(0,0,0,0.35)] backdrop-blur-2xl sm:p-5 lg:p-7"
+            >
+              {renderPage()}
+            </motion.div>
+          </main>
+
+          <nav
+            className="fixed inset-x-3 bottom-3 z-50 grid gap-2 rounded-[28px] border border-white/15 bg-slate-950/82 p-2 shadow-2xl backdrop-blur-2xl lg:hidden"
+            style={{ gridTemplateColumns: `repeat(${filteredNavItems.length}, minmax(0, 1fr))` }}
+          >
+            {filteredNavItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setCurrentPage(item.id as Page)}
+                className={cn(
+                  "flex min-h-16 flex-col items-center justify-center gap-1 rounded-2xl px-1 text-[9px] font-black uppercase tracking-tight transition-all",
+                  currentPage === item.id
+                    ? "bg-white text-slate-950"
+                    : "text-white/65 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+                <span className="leading-tight">{getPublicNavLabel(item)}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+
+        <Toaster position="top-center" richColors />
+      </div>
+    );
   }
 
   return (

@@ -970,7 +970,7 @@ export default function SuperAdminSaaS() {
                             className="w-full py-3 rounded-xl bg-[#1F2937] hover:bg-[#FF6B00] text-white text-sm font-bold transition-all flex items-center justify-center gap-2 group/btn"
                           >
                             <ExternalLink className="w-4 h-4 text-slate-400 group-hover/btn:text-white transition-colors" />
-                            Entrar al panel del cliente
+                            Ver detalle del cliente
                           </button>
                         </div>
                       </div>

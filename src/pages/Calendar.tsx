@@ -51,6 +51,7 @@ import { ShareAvailabilityModal } from '../components/ShareAvailabilityModal';
 
 export default function CalendarPage({ user, initialBookingId, onClearInitialBooking }: CalendarProps) {
   const effectiveClientId = getEffectiveClientId(user);
+  const isPlayerUser = user.role === 'client';
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -63,6 +64,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
   const [hoveredSlot, setHoveredSlot] = useState<{ hour: number, day: Date, pitch: Pitch } | null>(null);
   const [sharePitchId, setSharePitchId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isCalendarLoading, setIsCalendarLoading] = useState(true);
   
   const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
   const [bookingTimer, setBookingTimer] = useState<number | null>(null);
@@ -80,18 +82,22 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
 
   useEffect(() => {
     const fetchData = async () => {
+      setIsCalendarLoading(true);
       const clientId = effectiveClientId;
       if (!clientId) {
         setLoadError('No se pudo cargar el calendario: falta client_id del complejo seleccionado.');
         setPitches([]);
         setBookings([]);
         setDeactivatedSlots(new Set());
+        setIsCalendarLoading(false);
         return;
       }
 
       try {
         setLoadError(null);
-        const fetchedPitches = await dataService.getPitches(clientId);
+        const fetchedPitches = isPlayerUser
+          ? await dataService.getPublicPitches(clientId)
+          : await dataService.getPitches(clientId);
         setPitches(fetchedPitches);
 
         let fetchedBookings: Booking[] = [];
@@ -124,10 +130,12 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
       } catch (error) {
         console.error('Error loading calendar data:', error);
         setLoadError(error instanceof Error ? error.message : 'No se pudieron cargar las canchas del complejo seleccionado.');
+      } finally {
+        setIsCalendarLoading(false);
       }
     };
     fetchData();
-  }, [effectiveClientId, initialBookingId]);
+  }, [effectiveClientId, initialBookingId, isPlayerUser]);
 
   const [currentTime, setCurrentTime] = useState(new Date());
   
@@ -166,7 +174,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
     return 'available';
   };
 
-  const hours = Array.from({ length: 15 }, (_, i) => (i + 10) % 24); // 10:00 to 01:00
+  const hours = Array.from({ length: 16 }, (_, i) => (i + 10) % 24); // 10:00 to 01:00
   
   const days = view === 'day' 
     ? [selectedDate] 
@@ -184,8 +192,46 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
   const filteredPitches = filterPitch === 'all' 
     ? pitches 
     : pitches.filter(p => p.id === filterPitch);
+  const hasVisiblePitches = filteredPitches.length > 0;
+  const shouldShowEmptyPitches = !isCalendarLoading && !hasVisiblePitches;
+  const isAdminUser = user.role === 'admin';
+
+  const emptyPitchesMessage = pitches.length > 0
+    ? 'No hay canchas que coincidan con el filtro seleccionado.'
+    : isAdminUser
+      ? 'Agregá o activá una cancha desde Configuración para poder crear reservas.'
+      : 'No hay canchas disponibles para este complejo en este momento. Intentá nuevamente o volvé a elegir otro complejo.';
 
   const isPromoHour = (hour: number) => hour >= 10 && hour <= 16;
+
+  const formatSlotTime = (hour: number) => `${hour.toString().padStart(2, '0')}:00`;
+
+  const findFirstAvailableSlot = () => {
+    const candidatePitches = filteredPitches.length > 0 ? filteredPitches : pitches;
+
+    for (const hour of hours) {
+      const pitch = candidatePitches.find((candidate) => getSlotStatus(selectedDate, hour, candidate.id) === 'available');
+      if (pitch) {
+        return {
+          pitch,
+          time: formatSlotTime(hour),
+        };
+      }
+    }
+
+    return null;
+  };
+
+  const openBookingModal = (pitch: Pitch, date: Date, time: string) => {
+    setBookingData(prev => ({
+      ...prev,
+      pitch,
+      date,
+      time,
+    }));
+    setBookingTimer(300);
+    setIsBookingModalOpen(true);
+  };
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -299,10 +345,14 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
             <CalendarIcon className="w-10 h-10 text-white" />
           </div>
           <div>
-            <h1 className="text-5xl font-black tracking-tighter text-zinc-900 mb-1 italic">Calendario</h1>
+            <h1 className="text-5xl font-black tracking-tighter text-zinc-900 mb-1 italic">
+              {isPlayerUser ? 'Reservá tu cancha' : 'Calendario'}
+            </h1>
             <div className="flex items-center gap-3">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <p className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-[10px]">Actualizado en tiempo real</p>
+              <p className="text-zinc-500 font-bold uppercase tracking-[0.2em] text-[10px]">
+                {isPlayerUser ? 'Elegí día y horario disponible' : 'Actualizado en tiempo real'}
+              </p>
             </div>
           </div>
         </div>
@@ -347,17 +397,22 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
           <Button 
             className="h-16 px-10 rounded-[24px] bg-sky-600 text-white hover:bg-sky-700 shadow-2xl shadow-sky-200 gap-4 font-black text-[11px] uppercase tracking-widest transition-all hover:-translate-y-1 active:translate-y-0"
             onClick={() => {
-              setBookingData({
-                ...bookingData,
-                pitch: pitches[0] || null,
-                date: new Date(),
-                time: "18:00"
-              });
-              setIsBookingModalOpen(true);
+              if (!hasVisiblePitches) {
+                toast.error(emptyPitchesMessage);
+                return;
+              }
+
+              const firstAvailableSlot = findFirstAvailableSlot();
+              if (!firstAvailableSlot) {
+                toast.error('No hay horarios disponibles para la fecha seleccionada.');
+                return;
+              }
+
+              openBookingModal(firstAvailableSlot.pitch, selectedDate, firstAvailableSlot.time);
             }}
           >
             <Plus className="w-5 h-5" />
-            Nueva Reserva
+            {isPlayerUser ? 'Reservar cancha' : 'Nueva Reserva'}
           </Button>
         </div>
       </header>
@@ -462,6 +517,21 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
         {/* Desktop Grid View */}
         <div className="hidden md:block">
           <Card className="border-none shadow-2xl rounded-[32px] bg-white overflow-hidden border border-zinc-100">
+            {shouldShowEmptyPitches ? (
+              <div className="flex min-h-[360px] flex-col items-center justify-center gap-4 p-10 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                  <AlertCircle className="h-8 w-8" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black tracking-tight text-zinc-900">
+                    No hay canchas para mostrar
+                  </h3>
+                  <p className="mt-2 max-w-md text-sm font-medium text-zinc-500">
+                    {emptyPitchesMessage}
+                  </p>
+                </div>
+              </div>
+            ) : (
             <div className="w-full overflow-x-auto custom-scrollbar">
               <div className="min-w-[1000px] lg:min-w-full relative">
                 {/* Header Row */}
@@ -573,14 +643,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                                   if (isOccupied) {
                                     if (canSeeDetails && booking) setSelectedBooking(booking);
                                   } else if (!isPast && status !== 'deactivated') {
-                                    setBookingData({
-                                      ...bookingData,
-                                      pitch,
-                                      date: selectedDate,
-                                      time: `${hour.toString().padStart(2, '0')}:00`
-                                    });
-                                    setBookingTimer(300);
-                                    setIsBookingModalOpen(true);
+                                    openBookingModal(pitch, selectedDate, formatSlotTime(hour));
                                   }
                                 }}
                                 className={cn(
@@ -659,14 +722,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                                   if (isOccupied) {
                                     if (canSeeDetails && booking) setSelectedBooking(booking);
                                   } else if (!isPast && status !== 'deactivated') {
-                                    setBookingData({
-                                      ...bookingData,
-                                      pitch: targetPitch,
-                                      date: day,
-                                      time: `${hour.toString().padStart(2, '0')}:00`
-                                    });
-                                    setBookingTimer(300);
-                                    setIsBookingModalOpen(true);
+                                    openBookingModal(targetPitch, day, formatSlotTime(hour));
                                   }
                                 }}
                                 className={cn(
@@ -700,6 +756,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                 </div>
               </div>
             </div>
+            )}
           </Card>
         </div>
 
@@ -715,6 +772,15 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
             </div>
           </div>
 
+          {shouldShowEmptyPitches ? (
+            <div className="mx-4 rounded-3xl border border-amber-100 bg-amber-50 p-6 text-center text-amber-800">
+              <AlertCircle className="mx-auto mb-3 h-8 w-8" />
+              <p className="text-sm font-black uppercase tracking-widest">No hay canchas para mostrar</p>
+              <p className="mt-2 text-sm font-medium">
+                {emptyPitchesMessage}
+              </p>
+            </div>
+          ) : (
           <div className="space-y-6">
             {hours.map(hour => (
               <div key={hour} className="space-y-3">
@@ -768,14 +834,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                             if (isOccupied) {
                               if (canSeeDetails && booking) setSelectedBooking(booking);
                             } else if (!isPast && isAvailable) {
-                              setBookingData({
-                                ...bookingData,
-                                pitch,
-                                date: selectedDate,
-                                time: `${hour.toString().padStart(2, '0')}:00`
-                              });
-                              setBookingTimer(300);
-                              setIsBookingModalOpen(true);
+                              openBookingModal(pitch, selectedDate, formatSlotTime(hour));
                             }
                           }}
                           className={cn(
@@ -852,14 +911,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
                             if (isOccupied) {
                               if (canSeeDetails && booking) setSelectedBooking(booking);
                             } else if (!isPast && isAvailable) {
-                              setBookingData({
-                                ...bookingData,
-                                pitch: targetPitch,
-                                date: day,
-                                time: `${hour.toString().padStart(2, '0')}:00`
-                              });
-                              setBookingTimer(300);
-                              setIsBookingModalOpen(true);
+                              openBookingModal(targetPitch, day, formatSlotTime(hour));
                             }
                           }}
                           className={cn(
@@ -903,6 +955,7 @@ export default function CalendarPage({ user, initialBookingId, onClearInitialBoo
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
 

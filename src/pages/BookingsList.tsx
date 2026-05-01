@@ -41,6 +41,7 @@ interface BookingsListProps {
 
 export default function BookingsList({ user }: BookingsListProps) {
   const effectiveClientId = getEffectiveClientId(user);
+  const isPlayerUser = user.role === 'client';
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -62,7 +63,9 @@ export default function BookingsList({ user }: BookingsListProps) {
 
       try {
         setLoadError(null);
-        const p = await dataService.getPitches(clientId);
+        const p = isPlayerUser
+          ? await dataService.getPublicPitches(clientId)
+          : await dataService.getPitches(clientId);
         setPitches(p);
 
         try {
@@ -78,7 +81,7 @@ export default function BookingsList({ user }: BookingsListProps) {
       }
     };
     fetchData();
-  }, [effectiveClientId]);
+  }, [effectiveClientId, isPlayerUser]);
 
   const userBookingCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -93,11 +96,11 @@ export default function BookingsList({ user }: BookingsListProps) {
       const matchesSearch = b.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            b.clientPhone.includes(searchTerm);
       const matchesStatus = filterStatus === 'all' || b.status === filterStatus;
-      const matchesUser = user.role === 'admin' || b.userId === user.id;
+      const matchesUser = user.role === 'admin' || b.userId === user.id || (isPlayerUser && !!user.phone && b.clientPhone === user.phone);
       
       return matchesSearch && matchesStatus && matchesUser;
     }).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
-  }, [bookings, searchTerm, filterStatus, user]);
+  }, [bookings, searchTerm, filterStatus, user, isPlayerUser]);
 
   const groupedBookings = useMemo(() => {
     const today = startOfDay(new Date());
@@ -420,7 +423,9 @@ export default function BookingsList({ user }: BookingsListProps) {
           <h1 className="text-4xl font-black text-zinc-900 tracking-tighter">
             {user.role === 'admin' ? 'Gestión de Reservas' : 'Mis Reservas'}
           </h1>
-          <p className="text-zinc-500 font-medium">Panel de control y seguimiento</p>
+          <p className="text-zinc-500 font-medium">
+            {isPlayerUser ? 'Tus turnos y reservas del complejo' : 'Panel de control y seguimiento'}
+          </p>
         </div>
       </header>
 
@@ -497,7 +502,9 @@ export default function BookingsList({ user }: BookingsListProps) {
               <AlertCircle className="w-10 h-10 text-zinc-200" />
             </div>
             <h3 className="text-xl font-black text-zinc-900 mb-2">No se encontraron reservas</h3>
-            <p className="text-zinc-400 font-medium">Intenta cambiar los filtros o realiza una nueva reserva.</p>
+            <p className="text-zinc-400 font-medium">
+              {isPlayerUser ? 'Todavía no hay reservas asociadas a tu teléfono.' : 'Intenta cambiar los filtros o realiza una nueva reserva.'}
+            </p>
           </motion.div>
         )}
       </div>
