@@ -98,7 +98,7 @@ export default function AIChatFloating() {
           <div className="relative w-full h-full flex items-center justify-center">
             {/* The "Pelota Gauchita" Mascot */}
             <div className="relative w-16 h-16 bg-sky-400 rounded-full border-4 border-zinc-900 shadow-xl flex items-center justify-center overflow-visible">
-              {/* Soccer Ball Pattern (Emoji Style ⚽) */}
+              {/* Soccer ball inspired pattern */}
               <div className="absolute inset-0 rounded-full overflow-hidden pointer-events-none">
                 {/* Central Pentagon */}
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-6 h-6 bg-zinc-900" style={{ clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)' }} />

@@ -161,7 +161,7 @@ export const analyticsService = {
       }
       
       if (occupancyRate < 40) {
-        alerts.push("⚠️ Alerta: Ocupación crítica por debajo del 40%.");
+        alerts.push("Alerta: Ocupación crítica por debajo del 40%.");
       }
     }
     

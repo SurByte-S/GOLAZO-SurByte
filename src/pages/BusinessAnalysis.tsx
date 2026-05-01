@@ -74,7 +74,7 @@ const BusinessAnalysis: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <div>
           <h1 className="text-4xl font-black tracking-tighter text-zinc-900 uppercase italic">
-            📊 Análisis del Negocio
+            Análisis del Negocio
           </h1>
           <p className="text-zinc-500 font-medium mt-1">
             Inteligencia de datos basada en el sistema de reservas real.
@@ -138,12 +138,12 @@ const BusinessAnalysis: React.FC = () => {
               animate={{ opacity: 1, y: 0 }}
               key={idx}
               className={`p-4 rounded-2xl border flex items-center gap-4 ${
-                alert.includes('⚠️') 
+                alert.toLowerCase().includes('alerta')
                   ? 'bg-amber-50 border-amber-200 text-amber-900' 
                   : 'bg-orange-50 border-orange-200 text-orange-900'
               }`}
             >
-              <div className={`p-2 rounded-xl ${alert.includes('⚠️') ? 'bg-amber-100' : 'bg-orange-100'}`}>
+              <div className={`p-2 rounded-xl ${alert.toLowerCase().includes('alerta') ? 'bg-amber-100' : 'bg-orange-100'}`}>
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <p className="font-bold text-sm">{alert}</p>

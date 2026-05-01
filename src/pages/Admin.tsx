@@ -33,6 +33,7 @@ import { Badge } from '../components/Badge';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Product, AuditLog, User } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 import { toast } from 'sonner';
 
 interface AdminProps {
@@ -92,6 +93,7 @@ export default function Admin({ onLogout }: AdminProps) {
   const [productForm, setProductForm] = useState(defaultProductForm);
 
   const [user, setUser] = useState<User | null>(null);
+  const effectiveClientId = getEffectiveClientId(user);
 
   useEffect(() => {
     dataService.getCurrentUser().then(setUser);
@@ -100,7 +102,7 @@ export default function Admin({ onLogout }: AdminProps) {
   useEffect(() => {
     const fetchData = async () => {
       if (!user) return;
-      const clientId = user?.client_id;
+      const clientId = effectiveClientId;
       const pi = await dataService.getPitches(clientId);
       const pr = await dataService.getProducts(clientId);
       const logs = await dataService.getAuditLogs(clientId);
@@ -109,11 +111,11 @@ export default function Admin({ onLogout }: AdminProps) {
       setAuditLogs(logs);
     };
     fetchData();
-  }, [user]);
+  }, [user, effectiveClientId]);
 
   const refreshData = async () => {
     if (!user) return;
-    const clientId = user?.client_id;
+    const clientId = effectiveClientId;
     const pi = await dataService.getPitches(clientId);
     const pr = await dataService.getProducts(clientId);
     const logs = await dataService.getAuditLogs(clientId);
@@ -126,9 +128,9 @@ export default function Admin({ onLogout }: AdminProps) {
     e.preventDefault();
     try {
       if (editingPitch) {
-        await api.updatePitch(editingPitch.id, pitchForm);
+        await api.updatePitch(editingPitch.id, pitchForm, effectiveClientId || undefined);
       } else {
-        await api.addPitch(pitchForm);
+        await api.addPitch(pitchForm, effectiveClientId || undefined);
       }
       refreshData();
       setIsPitchModalOpen(false);
@@ -149,7 +151,7 @@ export default function Admin({ onLogout }: AdminProps) {
           price: productForm.price,
           category: productForm.category,
           min_stock: productForm.min_stock
-        });
+        }, effectiveClientId || undefined);
       } else {
         await api.addProduct({
           name: productForm.name,
@@ -158,7 +160,7 @@ export default function Admin({ onLogout }: AdminProps) {
           stock: productForm.stock,
           min_stock: productForm.min_stock,
           active: true
-        });
+        }, effectiveClientId || undefined);
       }
       refreshData();
       setIsProductModalOpen(false);
@@ -182,10 +184,10 @@ export default function Admin({ onLogout }: AdminProps) {
     if (!confirmDelete) return;
     
     if (confirmDelete.type === 'pitch') {
-      await api.deletePitch(confirmDelete.id);
+      await api.deletePitch(confirmDelete.id, effectiveClientId || undefined);
       toast.success('Cancha eliminada');
     } else {
-      await api.deleteProduct(confirmDelete.id);
+      await api.deleteProduct(confirmDelete.id, effectiveClientId || undefined);
       toast.success('Producto eliminado');
     }
     
@@ -227,7 +229,7 @@ export default function Admin({ onLogout }: AdminProps) {
         productId: stockUpdateProduct.id,
         quantityToAdd: stockUpdateQuantity,
         newStock: newStock
-      }]);
+      }], effectiveClientId || undefined);
       
       toast.success('Stock actualizado correctamente');
       setIsStockModalOpen(false);
@@ -258,7 +260,7 @@ export default function Admin({ onLogout }: AdminProps) {
     }
 
     try {
-      await api.bulkUpdateStock(updates);
+      await api.bulkUpdateStock(updates, effectiveClientId || undefined);
       toast.success('Stock actualizado correctamente');
       setIsBulkStockPreviewOpen(false);
       setIsBulkStockModalOpen(false);
@@ -759,8 +761,7 @@ export default function Admin({ onLogout }: AdminProps) {
                           variant="outline" 
                           className="w-full py-6 border-zinc-200 text-zinc-900 hover:bg-zinc-50 gap-3 rounded-2xl font-black text-xs uppercase tracking-widest"
                           onClick={async () => {
-                            const currentUser = await dataService.getCurrentUser();
-                            const logs = await dataService.getAuditLogs({ clientId: currentUser?.client_id, limit: 200 });
+                            const logs = await dataService.getAuditLogs({ clientId: effectiveClientId || undefined, limit: 200 });
                             setAuditLogs(logs);
                             setIsAuditModalOpen(true);
                           }}

@@ -43,6 +43,7 @@ import { Button } from './components/Button';
 import { Modal } from './components/Modal';
 import { ConfirmModal } from './components/ConfirmModal';
 import { cn } from './lib/utils';
+import { getEffectiveClientId } from './lib/tenant';
 import { dataService } from './services/dataService';
 import { User, Client } from './types';
 import { supabase, checkSupabaseConnection } from './lib/supabase';
@@ -64,12 +65,12 @@ export default function App() {
   const [showSplash, setShowSplash] = useState(false);
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [customLogo, setCustomLogo] = useState<string | null>(localStorage.getItem('golazo_custom_logo'));
+  const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [customLogo, setCustomLogo] = useState<string | null>((selectedClientId ? localStorage.getItem('golazo_client_logo_' + selectedClientId) : localStorage.getItem('golazo_custom_logo')));
   const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [clientConfig, setClientConfig] = useState<Client | null>(null);
   const [isClientLoading, setIsClientLoading] = useState(true);
-  const [selectedClientId, setSelectedClientId] = useState<string | null>(dataService.getSelectedClientId());
   const [publicClients, setPublicClients] = useState<Client[]>([]);
   const [isPublicClientsLoading, setIsPublicClientsLoading] = useState(true);
   const [selectedPublicClientId, setSelectedPublicClientId] = useState<string | null>(dataService.getPublicClientSelectionId());
@@ -98,12 +99,11 @@ export default function App() {
 
     try {
       const currentUser = await dataService.getCurrentUser();
-      const nextSelectedClientId = dataService.getSelectedClientId();
 
       if (!currentUser) {
         const publicClientId = dataService.getPublicClientSelectionId();
         setUser(null);
-        setSelectedClientId(nextSelectedClientId);
+        setSelectedClientId(null);
         setSelectedPublicClientId(publicClientId);
 
         if (publicClientId && isPublicRoute) {
@@ -139,14 +139,14 @@ export default function App() {
       }
 
       setUser(currentUser);
-      setSelectedClientId(nextSelectedClientId);
+      setSelectedClientId(currentUser.client_id || null);
 
       if (!isSuperAdminRoute && currentUser.client_id) {
         dataService.setPublicClientSelection(currentUser.client_id);
         setSelectedPublicClientId(currentUser.client_id);
       }
 
-      const targetClientId = currentUser.client_id;
+      const targetClientId = getEffectiveClientId(currentUser);
       if (targetClientId) {
         const data = await dataService.getClientConfig(targetClientId);
         setClientConfig(data);
@@ -185,7 +185,7 @@ export default function App() {
     });
 
     const handleStorageChange = () => {
-      setCustomLogo(localStorage.getItem('golazo_custom_logo'));
+      setCustomLogo((selectedClientId ? localStorage.getItem('golazo_client_logo_' + selectedClientId) : localStorage.getItem('golazo_custom_logo')));
     };
 
     const handleGuestInfoUpdated = () => {
@@ -209,7 +209,7 @@ export default function App() {
       reader.onloadend = () => {
         const base64String = reader.result as string;
         setCustomLogo(base64String);
-        localStorage.setItem('golazo_custom_logo', base64String);
+        if (selectedClientId) { localStorage.setItem('golazo_client_logo_' + selectedClientId, base64String); } else { localStorage.setItem('golazo_custom_logo', base64String); }
       };
       reader.readAsDataURL(file);
     }
@@ -233,7 +233,7 @@ export default function App() {
 
       setTimeout(() => {
         setUser(newUser);
-        setSelectedClientId(dataService.getSelectedClientId());
+        setSelectedClientId(newUser.client_id || null);
         setShowSplash(false);
       }, 2500);
     } catch (error) {
@@ -281,12 +281,6 @@ export default function App() {
       : null;
   const activeUser = user ?? publicPortalUser;
 
-  useEffect(() => {
-    if (!isPublicRoute) return;
-    console.log('selectedPublicClientId', selectedPublicClientId);
-    console.log('public user client_id', publicPortalUser?.client_id || user?.client_id);
-  }, [isPublicRoute, selectedPublicClientId, publicPortalUser?.client_id, user?.client_id]);
-
   const navItems = [
     { id: 'dashboard', label: 'Inicio', icon: Home, roles: ['admin', 'client'] },
     { id: 'bookings', label: 'Reservas', icon: CalendarIcon, roles: ['admin', 'client'], featureKey: 'reservas' },
@@ -297,7 +291,7 @@ export default function App() {
     { id: 'admin', label: 'Configuración', icon: Settings, roles: ['admin'] },
   ];
 
-  const navigationRole = activeUser?.role === 'superadmin' && selectedClientId ? 'admin' : activeUser?.role || '';
+  const navigationRole = activeUser?.role || '';
 
   const filteredNavItems = navItems.filter(item => {
     if (!item.roles.includes(navigationRole)) return false;
@@ -444,29 +438,22 @@ export default function App() {
             }}
           />
           <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(2,6,23,0.58)_0%,rgba(2,6,23,0.74)_34%,rgba(2,6,23,0.9)_100%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_28%),radial-gradient(circle_at_right,rgba(56,189,248,0.14),transparent_30%),radial-gradient(circle_at_bottom,rgba(250,204,21,0.12),transparent_26%)]" />
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute -top-20 -left-12 h-72 w-72 rounded-full bg-emerald-400/16 blur-[120px]" />
-            <div className="absolute top-1/3 -right-24 h-80 w-80 rounded-full bg-sky-400/12 blur-[140px]" />
-            <div className="absolute bottom-0 left-1/4 h-64 w-64 rounded-full bg-amber-300/10 blur-[120px]" />
-          </div>
 
           <div className="relative z-10 mx-auto flex min-h-screen w-full max-w-7xl flex-col px-5 py-6 sm:px-6 md:px-10 md:py-10">
             <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="max-w-4xl space-y-5">
                 <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-[11px] font-black uppercase tracking-[0.28em] text-emerald-200 backdrop-blur-xl">
                   <Target className="w-4 h-4 text-emerald-300" />
-                  Acceso Publico
-              </div>
+                  Acceso Público
+                </div>
                 <div className="space-y-4">
                   <h1 className="max-w-4xl text-4xl font-black leading-[0.92] tracking-[-0.04em] text-white md:text-6xl xl:text-7xl">
-                    Elegi tu complejo y entra a reservar con una experiencia mas pro.
+                    Elegí tu complejo y entrá a reservar con una experiencia más pro.
                   </h1>
                   <p className="max-w-2xl text-sm leading-6 text-zinc-200 md:text-lg md:leading-8">
-                Seleccioná el complejo donde querés reservar y seguí al login del panel público.
-              </p>
-            </div>
-
+                    Seleccioná el complejo donde querés reservar y seguí al panel público.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -477,7 +464,7 @@ export default function App() {
                   type="text"
                   value={publicSearchTerm}
                   onChange={(e) => setPublicSearchTerm(e.target.value)}
-                  placeholder="Buscar complejo o direccion"
+                  placeholder="Buscar complejo o dirección"
                   className="h-14 w-full rounded-[24px] border border-white/15 bg-black/25 pl-14 pr-5 text-sm text-white placeholder:text-zinc-300/60 backdrop-blur-xl outline-none transition-all focus:border-emerald-300/60 focus:bg-black/35 md:h-16 md:text-base"
                 />
               </div>
@@ -550,7 +537,7 @@ export default function App() {
                         <div className="flex min-h-[72px] items-start gap-3 rounded-[24px] border border-white/10 bg-black/20 px-4 py-4 backdrop-blur-md">
                           <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Direccion</p>
+                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-zinc-400">Dirección</p>
                             <p className="mt-1 text-sm leading-6 text-zinc-100">
                         {client.address || 'Complejo habilitado para reservas y acceso público.'}
                       </p>

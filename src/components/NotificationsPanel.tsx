@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Check, Trash2, Package, Calendar } from 'lucide-react';
+import { Bell, Check, Package, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -7,9 +7,9 @@ import { toast } from 'sonner';
 import { supabase } from '../lib/supabase';
 import { supabaseService } from '../services/supabaseService';
 import { dataService } from '../services/dataService';
-import { Notification } from '../types';
+import { Notification, User } from '../types';
 import { cn } from '../lib/utils';
-import { Button } from './Button';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface NotificationsPanelProps {
   onNotificationClick?: (bookingId: string) => void;
@@ -19,7 +19,7 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isHighlight, setIsHighlight] = useState(false);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
@@ -59,8 +59,8 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
 
       oscillator.start(context.currentTime);
       oscillator.stop(context.currentTime + 0.25);
-    } catch (error) {
-      console.warn('No se pudo reproducir el sonido de notificacion:', error);
+    } catch {
+      // Browsers can block audio until the user interacts with the page.
     }
   };
 
@@ -71,7 +71,8 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
     };
   }, []);
 
-  const clientId = user?.client_id;
+  const clientId = getEffectiveClientId(user);
+  const readNotificationsKey = clientId ? `golazo_read_notifications:${clientId}` : null;
 
   useEffect(() => {
     if (!dataService.isSupabaseConfigured()) return;
@@ -140,7 +141,6 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
           
           toast.success(`Nueva reserva - ${pitchName} a las ${timeStr}`, {
             duration: 5000,
-            icon: '🔔'
           });
 
           // Add to notifications list in memory (in case the insert to notifications table failed due to RLS)
@@ -153,11 +153,9 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
           };
           setNotifications(prev => [newNotification, ...prev]);
 
-        } catch (e) {
-          console.error('Error fetching pitch for notification:', e);
+        } catch {
           toast.success(`Nueva reserva recibida`, {
             duration: 5000,
-            icon: '🔔'
           });
           
           // Add generic notification
@@ -193,7 +191,9 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
         .order('created_at', { ascending: false })
         .limit(10);
         
-      const readIds = JSON.parse(localStorage.getItem('golazo_read_notifications') || '[]');
+      const readIds = readNotificationsKey
+        ? JSON.parse(localStorage.getItem(readNotificationsKey) || '[]')
+        : [];
       
       const bookingNotifications = (recentBookings || [])
         .map(b => {
@@ -219,8 +219,8 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
       uniqueNotifications.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
       
       setNotifications(uniqueNotifications);
-    } catch (error) {
-      console.error('Error fetching notifications:', error);
+    } catch {
+      setNotifications([]);
     }
   };
 
@@ -229,15 +229,17 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
       await supabaseService.markNotificationAsRead(id, clientId).catch(() => {});
       
       // Always mark in localStorage for bookings
-      const readIds = JSON.parse(localStorage.getItem('golazo_read_notifications') || '[]');
-      if (!readIds.includes(id)) {
+      const readIds = readNotificationsKey
+        ? JSON.parse(localStorage.getItem(readNotificationsKey) || '[]')
+        : [];
+      if (readNotificationsKey && !readIds.includes(id)) {
         readIds.push(id);
-        localStorage.setItem('golazo_read_notifications', JSON.stringify(readIds));
+        localStorage.setItem(readNotificationsKey, JSON.stringify(readIds));
       }
       
       setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
+    } catch {
+      setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     }
   };
 
@@ -245,15 +247,19 @@ export function NotificationsPanel({ onNotificationClick }: NotificationsPanelPr
     try {
       await supabaseService.markAllNotificationsAsRead(clientId).catch(() => {});
       
-      const readIds = JSON.parse(localStorage.getItem('golazo_read_notifications') || '[]');
+      const readIds = readNotificationsKey
+        ? JSON.parse(localStorage.getItem(readNotificationsKey) || '[]')
+        : [];
       notifications.forEach(n => {
         if (!readIds.includes(n.id)) readIds.push(n.id);
       });
-      localStorage.setItem('golazo_read_notifications', JSON.stringify(readIds));
+      if (readNotificationsKey) {
+        localStorage.setItem(readNotificationsKey, JSON.stringify(readIds));
+      }
       
       setNotifications(prev => prev.map(n => ({ ...n, read: true })));
-    } catch (error) {
-      console.error('Error marking all notifications as read:', error);
+    } catch {
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
     }
   };
 

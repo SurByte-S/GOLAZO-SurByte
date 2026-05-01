@@ -7,6 +7,7 @@ import { es } from 'date-fns/locale';
 import { toast, Toaster } from 'sonner';
 import { dataService } from '../services/dataService';
 import { Modal } from '../components/Modal';
+import { ClientDetailView } from '../components/ClientDetailView';
 
 type ClientFeatureKey = 'reservas' | 'ventas' | 'ranking' | 'estadisticas';
 
@@ -204,6 +205,7 @@ export default function SuperAdminSaaS() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
+  const [selectedClientForDetail, setSelectedClientForDetail] = useState<Client | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState<'dashboard' | 'clients' | 'users' | 'audit' | 'metrics' | 'settings'>('dashboard');
@@ -220,11 +222,6 @@ export default function SuperAdminSaaS() {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
-
-  const handleLoginAsClient = (client: Client) => {
-    dataService.setSelectedClientContext(client.id);
-    window.location.href = '/dashboard';
-  };
 
   // User creation state
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
@@ -613,7 +610,10 @@ export default function SuperAdminSaaS() {
 
   const handlePanelLogout = async () => {
     await dataService.logout();
-    window.location.href = '/';
+    setIsAuthenticated(false);
+    setEmail('');
+    setPassword('');
+    setSelectedClientForDetail(null);
   };
 
   if (!isAuthenticated) {
@@ -849,7 +849,13 @@ export default function SuperAdminSaaS() {
                 </button>
               </div>
 
-              {isLoading ? (
+              {selectedClientForDetail ? (
+                <ClientDetailView
+                  client={selectedClientForDetail}
+                  users={users}
+                  onBack={() => setSelectedClientForDetail(null)}
+                />
+              ) : isLoading ? (
                 <div className="flex items-center justify-center py-20">
                   <div className="w-10 h-10 border-4 border-[#FF6B00]/20 border-t-[#FF6B00] rounded-full animate-spin" />
                 </div>
@@ -890,7 +896,8 @@ export default function SuperAdminSaaS() {
                                 <div className="absolute right-0 mt-2 w-48 bg-[#1F2937] border border-white/10 rounded-xl shadow-2xl z-50 py-2 overflow-hidden">
                                   <button 
                                     onClick={() => {
-                                      handleLoginAsClient(client);
+                                      setSelectedClientForDetail(client);
+                                      setOpenMenuId(null);
                                     }} 
                                     className="w-full text-left px-4 py-2.5 text-sm hover:bg-white/5 transition-colors text-white font-medium flex items-center gap-2"
                                   >
@@ -959,7 +966,7 @@ export default function SuperAdminSaaS() {
                         {/* Footer Action */}
                         <div className="mt-auto pt-4 border-t border-white/5">
                           <button 
-                            onClick={() => handleLoginAsClient(client)}
+                            onClick={() => setSelectedClientForDetail(client)}
                             className="w-full py-3 rounded-xl bg-[#1F2937] hover:bg-[#FF6B00] text-white text-sm font-bold transition-all flex items-center justify-center gap-2 group/btn"
                           >
                             <ExternalLink className="w-4 h-4 text-slate-400 group-hover/btn:text-white transition-colors" />

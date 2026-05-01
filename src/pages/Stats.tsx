@@ -326,12 +326,12 @@ export default function StatsPage() {
     }
 
     if (avgOccupancy < 40) {
-      alerts.push("⚠️ Baja ocupación general detectada en este periodo.");
+      alerts.push("Baja ocupación general detectada en este periodo.");
     }
 
     const peakHours = confirmedBookings.filter(b => b.startTime.getHours() >= 20).length;
     if (peakHours > confirmedBookings.length * 0.4) {
-      alerts.push("🔥 Alta demanda en horarios nocturnos.");
+      alerts.push("Alta demanda en horarios nocturnos.");
     }
 
     // 7. Time Distribution
@@ -447,7 +447,7 @@ export default function StatsPage() {
                       <Sparkles className="w-6 h-6 text-sky-400" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-black text-white tracking-tight">📊 Análisis del negocio</h3>
+                      <h3 className="text-2xl font-black text-white tracking-tight">Análisis del negocio</h3>
                       <p className="text-sky-400/60 text-[10px] font-black uppercase tracking-[0.2em]">Inteligencia de Datos en Tiempo Real</p>
                     </div>
                   </div>
@@ -539,7 +539,7 @@ export default function StatsPage() {
               <Bot className="w-6 h-6 text-sky-400" />
             </div>
             <div>
-              <h3 className="text-xl font-black text-white">📊 Recomendaciones para mejorar ingresos</h3>
+              <h3 className="text-xl font-black text-white">Recomendaciones para mejorar ingresos</h3>
               <p className="text-sky-400/60 text-sm font-bold uppercase tracking-widest">Asistente Inteligente Golazo</p>
             </div>
           </div>

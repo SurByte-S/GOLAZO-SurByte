@@ -1,13 +1,14 @@
 import { getSupabaseAnonKey, getSupabaseUrl, supabase } from '../lib/supabase';
-import { Pitch, Booking, Product, Sale, User, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus, Client } from '../types';
+import { Pitch, Booking, Product, Sale, AuditLog, AuditLogFilters, AuditLogInput, BookingStatus, Client } from '../types';
 import imageCompression from 'browser-image-compression';
-import { PUBLIC_PORTAL_CLIENTS } from './publicPortalClients';
 
 const log = (message: string, data?: any) => {
-  console.log(`[Supabase Service] ${message}`, data || '');
+  void message;
+  void data;
 };
 
 const logError = (message: string, error: any) => {
+  if (!import.meta.env.DEV) return;
   console.error(`[Supabase Service Error] ${message}:`, error);
 };
 
@@ -214,6 +215,11 @@ export const supabaseService = {
 
   getPublicPitches: async (clientId?: string) => {
     log('Fetching public pitches...', { clientId });
+    // Early return if no clientId - prevents 401 errors
+    if (!clientId) {
+      log('No clientId provided, returning empty array');
+      return [];
+    }
 
     let query = supabase
       .from('public_pitches_catalog_v1')
@@ -347,6 +353,11 @@ export const supabaseService = {
   // Pitches
   getPitches: async (clientId?: string) => {
     log('Fetching pitches...', { clientId });
+    // Early return if no clientId - prevents 401 errors
+    if (!clientId) {
+      log('No clientId provided, returning empty array');
+      return [];
+    }
     const requiredClientId = ensureClientId(clientId, 'Listar canchas');
 
     const { data, error } = await supabase
@@ -456,6 +467,11 @@ export const supabaseService = {
 
   getBookings: async (clientId?: string, startDate?: string, endDate?: string) => {
     log('Fetching bookings...', { clientId, startDate, endDate });
+    // Early return if no clientId - prevents 401 errors
+    if (!clientId) {
+      log('No clientId provided, returning empty array');
+      return [];
+    }
     const requiredClientId = ensureClientId(clientId, 'Listar reservas');
     let query = supabase
       .from('bookings')
@@ -1376,3 +1392,5 @@ export const supabaseService = {
     }
   }
 };
+
+

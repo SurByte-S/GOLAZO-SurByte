@@ -46,6 +46,7 @@ import { NotificationsPanel } from '../components/NotificationsPanel';
 import { dataService, api } from '../services/dataService';
 import { Pitch, Booking, User as UserType, Sale, Product, Client } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface DashboardProps {
   user: UserType;
@@ -57,6 +58,7 @@ interface DashboardProps {
 
 export default function Dashboard({ user, onNavigate, onLogout, onNotificationClick, clientConfig }: DashboardProps) {
   const isPublicPortalUser = user.role === 'client' && user.id.startsWith('public-player:');
+  const effectiveClientId = getEffectiveClientId(user);
   const [pitches, setPitches] = useState<Pitch[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [sales, setSales] = useState<Sale[]>([]);
@@ -90,7 +92,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
 
   useEffect(() => {
     const fetchData = async () => {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       if (isPublicPortalUser) {
         const publicPitches = await dataService.getPublicPitches(clientId);
         setPitches(publicPitches);
@@ -116,7 +118,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
       setUserPoints(points);
     };
     fetchData();
-  }, [isPublicPortalUser, user.id, user.phone, user.role, user.client_id]);
+  }, [effectiveClientId, isPublicPortalUser, user.id, user.phone, user.role]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -217,14 +219,14 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         receiptUrl: formData.receipt || undefined,
         depositAmount: Number(formData.depositAmount) || 0,
         paymentUrl: formData.paymentMethod === 'mercadopago' ? formData.paymentUrl : undefined
-      });
+      }, effectiveClientId || undefined);
       
       persistGuestInfo();
 
-      const updatedBookings = await dataService.getBookings(user.client_id);
+      const updatedBookings = await dataService.getBookings(effectiveClientId);
       setBookings(updatedBookings);
       const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-      const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
+      const updatedPoints = await dataService.getUserPoints(identifier, effectiveClientId);
       setUserPoints(updatedPoints);
       setIsBookingModalOpen(false);
       resetBookingForm();
@@ -235,15 +237,15 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
     } catch (error: any) {
       if (error.message === 'name_mismatch') {
         toast('Este número ya está registrado con otro nombre, pero la reserva se ha creado.', {
-          icon: '⚠️',
+          icon: '!',
         });
         
         persistGuestInfo();
 
-        const updatedBookings = await dataService.getBookings(user.client_id);
+        const updatedBookings = await dataService.getBookings(effectiveClientId);
         setBookings(updatedBookings);
         const identifier = user.role === 'client' && formData.clientPhone ? formData.clientPhone : user.id;
-        const updatedPoints = await dataService.getUserPoints(identifier, user.client_id);
+        const updatedPoints = await dataService.getUserPoints(identifier, effectiveClientId);
         setUserPoints(updatedPoints);
         setIsBookingModalOpen(false);
         resetBookingForm();
@@ -308,7 +310,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         return `*${p.name}*: ${slots.join(', ')}`;
       }).join('\n');
 
-      const text = encodeURIComponent(`⚽ *Disponibilidad Golazo - ${format(selectedDate, 'dd/MM/yyyy')}*\n\n${availableSlots}\n\n¡Reserva tu turno ahora!`);
+      const text = encodeURIComponent(`Golazo - Disponibilidad ${format(selectedDate, 'dd/MM/yyyy')}\n\n${availableSlots}\n\n¡Reservá tu turno ahora!`);
       window.open(`https://wa.me/?text=${text}`, '_blank');
     } catch (error) {
       console.error('Error sharing:', error);
@@ -360,7 +362,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
   const [weather, setWeather] = useState<{ temp: number; condition: string; icon: string; locationName: string }>({
     temp: 22,
     condition: 'Cargando...',
-    icon: '⏳',
+    icon: 'â³',
     locationName: 'Tu ubicación'
   });
 
@@ -393,15 +395,15 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
 
         // Map WMO Weather interpretation codes (WW)
         const getCondition = (code: number) => {
-          if (code === 0) return { text: 'Despejado', icon: '☀️' };
-          if (code <= 3) return { text: 'Parcialmente Nublado', icon: '🌤️' };
-          if (code <= 48) return { text: 'Niebla', icon: '🌫️' };
-          if (code <= 55) return { text: 'Llovizna', icon: '🌦️' };
-          if (code <= 65) return { text: 'Lluvia', icon: '🌧️' };
-          if (code <= 75) return { text: 'Nieve', icon: '❄️' };
-          if (code <= 82) return { text: 'Chubascos', icon: '🌦️' };
-          if (code <= 99) return { text: 'Tormenta', icon: '⛈️' };
-          return { text: 'Soleado', icon: '☀️' };
+          if (code === 0) return { text: 'Despejado', icon: 'Sol' };
+          if (code <= 3) return { text: 'Parcialmente nublado', icon: 'Nubes' };
+          if (code <= 48) return { text: 'Niebla', icon: 'Niebla' };
+          if (code <= 55) return { text: 'Llovizna', icon: 'Llovizna' };
+          if (code <= 65) return { text: 'Lluvia', icon: 'Lluvia' };
+          if (code <= 75) return { text: 'Nieve', icon: 'Nieve' };
+          if (code <= 82) return { text: 'Chubascos', icon: 'Lluvia' };
+          if (code <= 99) return { text: 'Tormenta', icon: 'Tormenta' };
+          return { text: 'Soleado', icon: 'Sol' };
         };
 
         const { text, icon } = getCondition(current.weathercode);
@@ -416,7 +418,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
         setWeather({ 
           temp: 22, 
           condition: 'Soleado', 
-          icon: '☀️', 
+          icon: 'Sol',
           locationName: 'Buenos Aires' 
         });
       }
@@ -461,7 +463,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
                 <h1 className="text-4xl sm:text-5xl md:text-6xl font-black text-zinc-900 tracking-tighter uppercase italic">INICIO</h1>
               </div>
               <div className="flex flex-col">
-                <p className="text-zinc-500 font-bold text-lg italic">¡Hola, {user.name}! 👋</p>
+                <p className="text-zinc-500 font-bold text-lg italic">¡Hola, {user.name}!</p>
                 <p className="text-zinc-400 text-[10px] font-black uppercase tracking-[0.3em]">Panel de Jugador</p>
               </div>
             </div>
@@ -545,7 +547,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
               } else {
                 let booking = bookings.find(b => b.id === bookingId);
                 if (!booking) {
-                  const latestBookings = await dataService.getBookings(user.client_id);
+                  const latestBookings = await dataService.getBookings(effectiveClientId);
                   setBookings(latestBookings);
                   booking = latestBookings.find(b => b.id === bookingId);
                 }
@@ -579,7 +581,7 @@ export default function Dashboard({ user, onNavigate, onLogout, onNotificationCl
           )}
         </div>
       </header>
-supabase/migrations/202604251200_public_active_pitches.sql
+
       {/* 2. MÉTRICAS CLAVE */}
       <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
@@ -1224,8 +1226,8 @@ supabase/migrations/202604251200_public_active_pitches.sql
                 className="flex-1 py-4 rounded-2xl font-black"
                 onClick={async () => {
                   try {
-                    await api.cancelBooking(selectedBooking.id, user.client_id);
-                    const updatedBookings = await dataService.getBookings(user.client_id);
+                    await api.cancelBooking(selectedBooking.id, effectiveClientId || undefined);
+                    const updatedBookings = await dataService.getBookings(effectiveClientId);
                     setBookings(updatedBookings);
                     setIsBookingDetailModalOpen(false);
                   } catch (error) {

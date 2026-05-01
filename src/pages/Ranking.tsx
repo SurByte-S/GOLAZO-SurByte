@@ -6,19 +6,21 @@ import { Badge } from '../components/Badge';
 import { dataService } from '../services/dataService';
 import { User } from '../types';
 import { cn } from '../lib/utils';
+import { getEffectiveClientId } from '../lib/tenant';
 
 interface RankingPageProps {
   user: User;
 }
 
 export default function RankingPage({ user }: RankingPageProps) {
+  const effectiveClientId = getEffectiveClientId(user);
   const [ranking, setRanking] = useState<{ id: string, name: string, points: number }[]>([]);
   const [userPoints, setUserPoints] = useState(0);
   const [lastPoints, setLastPoints] = useState<{ points: number, isPromo: boolean } | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const clientId = user.client_id;
+      const clientId = effectiveClientId;
       const currentRanking = await dataService.getRanking(clientId);
       setRanking(currentRanking);
       const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
@@ -32,7 +34,7 @@ export default function RankingPage({ user }: RankingPageProps) {
       }
     };
     fetchData();
-  }, [user.id, user.phone, user.role, user.client_id]);
+  }, [effectiveClientId, user.id, user.phone, user.role]);
 
   const identifier = user.role === 'client' && user.phone ? user.phone : user.id;
   const userPosition = ranking.findIndex(p => p.id === identifier) + 1;
@@ -102,7 +104,7 @@ export default function RankingPage({ user }: RankingPageProps) {
                 <div className="bg-white/10 backdrop-blur-sm p-3 rounded-2xl border border-white/10 inline-flex items-center gap-2">
                   <span className="text-xs font-bold">
                     Última reserva: <span className="text-yellow-300">+{lastPoints.points} puntos</span>
-                    {lastPoints.isPromo && " 🔥"}
+                    {lastPoints.isPromo && " promo"}
                   </span>
                 </div>
               )}
@@ -237,7 +239,7 @@ export default function RankingPage({ user }: RankingPageProps) {
                             index === 2 ? "bg-gradient-to-br from-orange-300 to-orange-500 text-white shadow-orange-500/20" :
                             "bg-zinc-50 text-zinc-400"
                           )}>
-                            {index === 0 ? "🥇" : index === 1 ? "🥈" : index === 2 ? "🥉" : index + 1}
+                            {index + 1}
                           </div>
                           <div className="flex items-center gap-2 sm:gap-4">
                             <div className={cn(
